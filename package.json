@@ -6,13 +6,15 @@
   "description": "Cross-platform Hytale instance launcher — Prism-style profiles without redistributing the game.",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/patch-dev-electron-name.mjs && electron-vite dev -- --class=Spire",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "postinstall": "node scripts/patch-dev-electron-name.mjs",
     "dist": "npm run build && electron-builder --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "generate:installer-assets": "python3 scripts/generate-installer-assets.py",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "build": {
@@ -40,24 +42,74 @@
     "mac": {
       "icon": "resources/icon.icns",
       "category": "public.app-category.games",
+      "executableName": "Spire",
       "extendInfo": {
         "CFBundleName": "Spire",
-        "CFBundleDisplayName": "Spire"
+        "CFBundleDisplayName": "Spire",
+        "CFBundleIdentifier": "dev.spire.launcher"
       },
       "target": [
         "dmg",
         "zip"
       ]
     },
+    "dmg": {
+      "title": "Install Spire",
+      "background": "resources/dmg-background.png",
+      "icon": "resources/icon.icns",
+      "iconSize": 100,
+      "window": {
+        "width": 660,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 180,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "win": {
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.ico",
+      "executableName": "Spire",
       "target": [
         "nsis",
         "portable"
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spire",
+      "uninstallDisplayName": "Spire",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeader": "resources/installerHeader.bmp",
+      "installerSidebar": "resources/installerSidebar.bmp",
+      "uninstallerSidebar": "resources/installerSidebar.bmp",
+      "include": "resources/installer.nsh",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
     "linux": {
       "icon": "resources/icon.png",
+      "executableName": "Spire",
+      "desktop": {
+        "entry": {
+          "Name": "Spire",
+          "StartupWMClass": "Spire"
+        }
+      },
       "category": "Game",
       "target": [
         "AppImage",

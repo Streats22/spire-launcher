@@ -31,9 +31,13 @@ npm install
 npm run dev
 ```
 
+<<<<<<< HEAD
 Appearance lives under **Settings → Appearance**: dark/light/high-contrast themes, readability density, and home grid vs list layout. Choices sync across main, manage, and run windows.
 
 On macOS, `npm run dev` runs the stock Electron binary from `node_modules`, so the **Dock may still say “Electron”** even though the window title, menu name (`app.setName('Spire')`), and About panel use Spire. A packaged build (`npm run dist:mac`) produces `Spire.app` with the correct Dock / bundle name (`CFBundleName`).
+=======
+On macOS, `npm run dev` patches the local Electron.app Info.plist so the Dock / menu bar / Cmd+Tab show **Spire** (not “Electron”). Quit and relaunch after `npm install` if the label is stale. Packaged builds (`npm run dist:mac`) produce `Spire.app` with the same name via `productName` / `CFBundleName`.
+>>>>>>> origin/main
 
 ## Package
 
@@ -41,6 +45,17 @@ On macOS, `npm run dev` runs the stock Electron binary from `node_modules`, so t
 npm run dist:mac
 npm run dist:win
 npm run dist:linux
+```
+
+Packaged installers use branded chrome:
+
+- **macOS DMG** — custom Finder window (`resources/dmg-background.png`) with drag-to-Applications
+- **Windows NSIS** — assisted setup wizard with Spire sidebar/header art (not one-click), desktop + Start Menu shortcuts
+
+Regenerate installer graphics after icon/theme changes:
+
+```bash
+npm run generate:installer-assets
 ```
 
 ## Mod stores
