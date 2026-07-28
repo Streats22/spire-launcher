@@ -419,6 +419,10 @@ export class LaunchService {
 
 export const launchService = new LaunchService()
 
+export function stopAllLaunches(): void {
+  launchService.stopAll()
+}
+
 export function getInstallStatus(): InstallStatus {
   return launchService.getInstallStatus()
 }
