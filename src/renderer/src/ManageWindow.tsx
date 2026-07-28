@@ -4,6 +4,7 @@ import type {
   ServerEntry,
   SpireInstance,
   SpireSettings,
+  WorldCreatePreset,
   WorldEntry
 } from '../../shared/types'
 import ContextMenu, { useContextMenu } from './ContextMenu'
@@ -53,6 +54,9 @@ export default function ManageWindow({
   const [servers, setServers] = useState<ServerEntry[]>([])
   const [logLines, setLogLines] = useState<string[]>([])
   const [newWorldName, setNewWorldName] = useState('')
+  const [newWorldPreset, setNewWorldPreset] = useState<WorldCreatePreset>('adventure')
+  const [newWorldSeed, setNewWorldSeed] = useState('')
+  const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([])
   const [serverDraft, setServerDraft] = useState({
     id: '' as string | undefined,
     name: '',
@@ -69,6 +73,9 @@ export default function ManageWindow({
     () => instances.find((i) => i.id === activeId) ?? null,
     [instances, activeId]
   )
+  const allWorldsSelected =
+    worlds.length > 0 && selectedWorldIds.length === worlds.length
+  const someWorldsSelected = selectedWorldIds.length > 0
 
   const refresh = useCallback(async () => {
     const [nextSettings, nextInstances, nextAuth] = await Promise.all([
@@ -156,6 +163,10 @@ export default function ManageWindow({
     return () => window.clearTimeout(t)
   }, [toast])
 
+  useEffect(() => {
+    setSelectedWorldIds((prev) => prev.filter((id) => worlds.some((w) => w.id === id)))
+  }, [worlds])
+
   async function onSelect(id: string): Promise<void> {
     const next = await window.spire.setActiveInstance(id)
     setSettings(next)
@@ -165,8 +176,18 @@ export default function ManageWindow({
     if (!activeId || !newWorldName.trim()) return
     setBusy(true)
     try {
-      await window.spire.createWorld(activeId, newWorldName.trim())
+      const seedRaw = newWorldSeed.trim()
+      const seed = seedRaw === '' ? null : Number(seedRaw)
+      if (seedRaw !== '' && !Number.isFinite(seed)) {
+        setToast('Seed must be a number')
+        return
+      }
+      await window.spire.createWorld(activeId, newWorldName.trim(), {
+        preset: newWorldPreset,
+        seed
+      })
       setNewWorldName('')
+      setNewWorldSeed('')
       await refreshContent()
       setToast('World created')
     } catch (err) {
@@ -221,18 +242,22 @@ export default function ManageWindow({
     }
   }
 
-  async function applyModSetToSaves(): Promise<void> {
+  async function applyModSetToSaves(worldIds?: string[]): Promise<void> {
     if (!activeId) return
+    if (worldIds && worldIds.length === 0) {
+      setToast('Select at least one world')
+      return
+    }
     setBusy(true)
     try {
-      const result = await window.spire.applyModSetToSaves(activeId)
+      const result = await window.spire.applyModSetToSaves(activeId, worldIds)
       if (result.saves === 0) {
-        setToast('No saves yet — create a world in Hytale (via Spire Play) first')
+        setToast('No saves yet — create a world first')
       } else if (result.modCount === 0) {
         setToast(`Checked ${result.saves} save(s) — no enabled mods to apply`)
       } else if (result.updated === 0) {
         setToast(
-          `All ${result.saves} save(s) already have your ${result.modCount} enabled mod(s)`
+          `Selected ${result.saves} save(s) already have your ${result.modCount} enabled mod(s)`
         )
       } else {
         setToast(
@@ -244,6 +269,16 @@ export default function ManageWindow({
     } finally {
       setBusy(false)
     }
+  }
+
+  function toggleWorldSelected(worldId: string): void {
+    setSelectedWorldIds((prev) =>
+      prev.includes(worldId) ? prev.filter((id) => id !== worldId) : [...prev, worldId]
+    )
+  }
+
+  function toggleSelectAllWorlds(): void {
+    setSelectedWorldIds(allWorldsSelected ? [] : worlds.map((w) => w.id))
   }
 
   function editServer(server: ServerEntry): void {
@@ -474,64 +509,123 @@ export default function ManageWindow({
               <div>
                 <h1 className="page-title">Worlds</h1>
                 <p className="page-sub">
-                  Manage this profile’s Saves folder. Full world options (seed, generation, etc.)
-                  live in Hytale’s Create World — Spire Create only makes a basic save stub.
+                  Create saves with Adventure, Creative, or Flat presets, or download packs.
+                  Select worlds below to apply your enabled mod set.
                 </p>
               </div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={busy || !activeId || worlds.length === 0}
-                  onClick={() => void applyModSetToSaves()}
-                  title="Write Spire’s enabled mods into every save’s config.json"
-                >
-                  Apply mod set to saves
-                </button>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={() => setWorldsView('download')}
-                >
-                  Download
-                </button>
-              </div>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => setWorldsView('download')}
+              >
+                Download
+              </button>
             </div>
             <div className="wizard-callout worlds-mod-callout">
               <p className="wizard-note">
                 <strong>Mods and new worlds.</strong> Hytale’s Create World screen starts with
-                mods unchecked — Spire can’t flip those checkboxes. Launch with Play, create the
-                world in-game (even if boxes stay off), and Spire will turn your enabled mods on
-                in that save afterward. Use <em>Apply mod set to saves</em> anytime to sync
-                existing worlds after you install or toggle mods.
+                mods unchecked — Spire can’t flip those checkboxes. Launch with Play, create in
+                game (even if boxes stay off), and Spire enables your mods afterward. Or create
+                here with a world type, then use <em>Apply to all</em> /{' '}
+                <em>Apply to selected</em> after you install or toggle mods.
               </p>
             </div>
-            <div className="row" style={{ marginBottom: 12 }}>
-              <input
-                value={newWorldName}
-                onChange={(e) => setNewWorldName(e.target.value)}
-                placeholder="New world name (basic stub — prefer Create in Hytale)"
-                style={{ flex: 1, minWidth: 160 }}
-              />
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={busy || !newWorldName.trim()}
-                onClick={() => void createWorld()}
-              >
-                Create
-              </button>
+            <div className="worlds-create">
+              <div className="row worlds-create-row">
+                <input
+                  value={newWorldName}
+                  onChange={(e) => setNewWorldName(e.target.value)}
+                  placeholder="World name"
+                  style={{ flex: 1, minWidth: 140 }}
+                />
+                <label className="field worlds-create-field">
+                  <span>Type</span>
+                  <select
+                    value={newWorldPreset}
+                    onChange={(e) => setNewWorldPreset(e.target.value as WorldCreatePreset)}
+                  >
+                    <option value="adventure">Adventure</option>
+                    <option value="creative">Creative</option>
+                    <option value="flat">Flat</option>
+                  </select>
+                </label>
+                <label className="field worlds-create-field">
+                  <span>Seed</span>
+                  <input
+                    value={newWorldSeed}
+                    onChange={(e) => setNewWorldSeed(e.target.value)}
+                    placeholder="Random"
+                    inputMode="numeric"
+                  />
+                </label>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  disabled={busy || !newWorldName.trim()}
+                  onClick={() => void createWorld()}
+                >
+                  Create
+                </button>
+              </div>
             </div>
             {worlds.length === 0 ? (
               <div className="empty-state">No worlds yet.</div>
             ) : (
+              <>
+              <div className="row worlds-apply-bar">
+                <label className="worlds-select-all">
+                  <input
+                    type="checkbox"
+                    checked={allWorldsSelected}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate = someWorldsSelected && !allWorldsSelected
+                      }
+                    }}
+                    onChange={() => toggleSelectAllWorlds()}
+                  />
+                  <span>
+                    {someWorldsSelected
+                      ? `${selectedWorldIds.length} selected`
+                      : 'Select worlds'}
+                  </span>
+                </label>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={busy || !activeId || !someWorldsSelected}
+                    onClick={() => void applyModSetToSaves(selectedWorldIds)}
+                  >
+                    Apply to selected
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={busy || !activeId}
+                    onClick={() => void applyModSetToSaves()}
+                  >
+                    Apply to all
+                  </button>
+                </div>
+              </div>
               <div className="manage-list">
                 {worlds.map((world) => (
                   <div
                     key={world.id}
-                    className="manage-row"
+                    className={
+                      selectedWorldIds.includes(world.id)
+                        ? 'manage-row manage-row-selected'
+                        : 'manage-row'
+                    }
                     onContextMenu={(e) =>
                       openMenu(e, [
+                        {
+                          id: 'apply',
+                          label: 'Apply mod set',
+                          disabled: busy,
+                          onSelect: () => void applyModSetToSaves([world.id])
+                        },
                         {
                           id: 'rename',
                           label: 'Rename',
@@ -563,6 +657,13 @@ export default function ManageWindow({
                       ])
                     }
                   >
+                    <label className="worlds-row-check">
+                      <input
+                        type="checkbox"
+                        checked={selectedWorldIds.includes(world.id)}
+                        onChange={() => toggleWorldSelected(world.id)}
+                      />
+                    </label>
                     <div className="manage-row-main">
                       <strong>{world.name}</strong>
                       <span className="muted">
@@ -573,6 +674,14 @@ export default function ManageWindow({
                       </span>
                     </div>
                     <div className="manage-row-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void applyModSetToSaves([world.id])}
+                      >
+                        Apply mods
+                      </button>
                       <button className="btn" type="button" disabled={busy} onClick={() => void renameWorld(world)}>
                         Rename
                       </button>
@@ -606,6 +715,7 @@ export default function ManageWindow({
                   </div>
                 ))}
               </div>
+              </>
             )}
               </>
             )}

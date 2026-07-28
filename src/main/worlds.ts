@@ -13,7 +13,12 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ApplyModSetResult, WorldEntry } from '../shared/types'
+import type {
+  ApplyModSetResult,
+  CreateWorldOptions,
+  WorldCreatePreset,
+  WorldEntry
+} from '../shared/types'
 import { ensureInstanceLayout, getInstancePath } from './instances'
 import { listEnabledPluginIds } from './mods/pluginId'
 import { logInfo, logWarn } from './logging'
@@ -26,6 +31,8 @@ type SaveConfig = {
   Backup?: Record<string, unknown>
   [key: string]: unknown
 }
+
+type UniverseWorldConfig = Record<string, unknown>
 
 const saveWatchers = new Map<string, FSWatcher>()
 
@@ -59,12 +66,18 @@ export class WorldService {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  create(instanceId: string, name: string): WorldEntry {
+  create(instanceId: string, name: string, options?: CreateWorldOptions): WorldEntry {
     const safe = this.#safeName(name) || `World-${randomUUID().slice(0, 8)}`
     const path = join(this.savesRoot(instanceId), safe)
     if (existsSync(path)) {
       throw new Error('A world with that name already exists.')
     }
+    const preset: WorldCreatePreset = options?.preset ?? 'adventure'
+    const seed =
+      typeof options?.seed === 'number' && Number.isFinite(options.seed)
+        ? Math.trunc(options.seed)
+        : Date.now()
+
     mkdirSync(path, { recursive: true })
     writeFileSync(
       join(path, 'client_metadata.json'),
@@ -72,7 +85,11 @@ export class WorldService {
       'utf8'
     )
     this.#writeConfig(path, this.#buildConfigWithMods(instanceId))
-    logInfo('worlds', `Created save “${safe}” with installed mods enabled`)
+    this.#writeUniverseWorld(path, safe, preset, seed)
+    logInfo(
+      'worlds',
+      `Created save “${safe}” (${preset}, seed ${seed}) with installed mods enabled`
+    )
     return this.list(instanceId).find((w) => w.id === safe)!
   }
 
@@ -119,18 +136,19 @@ export class WorldService {
   }
 
   /**
-   * Ensure every save enables Spire-installed mods.
-   * Always sets Enabled: true for mods Spire has enabled (Hytale’s create-world
-   * flow often writes them as false by default).
+   * Ensure saves enable Spire-installed mods.
+   * Pass worldIds to target a subset; omit for every save.
    */
-  applyModSetToSaves(instanceId: string): ApplyModSetResult {
+  applyModSetToSaves(instanceId: string, worldIds?: string[]): ApplyModSetResult {
     const pluginIds = listEnabledPluginIds(instanceId)
-    const saves = this.list(instanceId)
+    const all = this.list(instanceId)
+    const targets =
+      worldIds == null ? all : all.filter((w) => worldIds.includes(w.id))
     let updated = 0
-    for (const world of saves) {
+    for (const world of targets) {
       if (this.enableModsInSave(instanceId, world.id)) updated += 1
     }
-    return { saves: saves.length, updated, modCount: pluginIds.length }
+    return { saves: targets.length, updated, modCount: pluginIds.length }
   }
 
   enableModsOnAllSaves(instanceId: string): number {
@@ -281,6 +299,139 @@ export class WorldService {
     mkdirSync(savePath, { recursive: true })
     writeFileSync(join(savePath, 'config.json'), JSON.stringify(config, null, 2), 'utf8')
   }
+
+  /** Seed `universe/worlds/default` so Hytale picks up type / mode / seed on first open. */
+  #writeUniverseWorld(
+    savePath: string,
+    displayName: string,
+    preset: WorldCreatePreset,
+    seed: number
+  ): void {
+    const worldDir = join(savePath, 'universe', 'worlds', 'default')
+    mkdirSync(worldDir, { recursive: true })
+    writeFileSync(
+      join(worldDir, 'config.json'),
+      JSON.stringify(this.#universeWorldConfig(displayName, preset, seed), null, 2),
+      'utf8'
+    )
+  }
+
+  #uuidBinary(): { $binary: string; $type: '04' } {
+    const hex = randomUUID().replace(/-/g, '')
+    return {
+      $binary: Buffer.from(hex, 'hex').toString('base64'),
+      $type: '04'
+    }
+  }
+
+  #universeWorldConfig(
+    displayName: string,
+    preset: WorldCreatePreset,
+    seed: number
+  ): UniverseWorldConfig {
+    const base: UniverseWorldConfig = {
+      Version: 4,
+      UUID: this.#uuidBinary(),
+      DisplayName: displayName,
+      Seed: seed,
+      WorldMap: { Type: 'WorldGen' },
+      ChunkStorage: { Type: 'Hytale' },
+      ChunkConfig: {},
+      IsTicking: true,
+      IsBlockTicking: true,
+      IsPvpEnabled: false,
+      IsGameTimePaused: false,
+      GameTime: '0001-01-01T06:00:00Z',
+      ClientEffects: {
+        SunHeightPercent: 100,
+        SunAngleDegrees: 0,
+        BloomIntensity: 0.3,
+        BloomPower: 8,
+        SunIntensity: 0.25,
+        SunshaftIntensity: 0.3,
+        SunshaftScaleFactor: 4
+      },
+      RequiredPlugins: {},
+      IsSpawnMarkersEnabled: true,
+      IsAllNPCFrozen: false,
+      GameplayConfig: 'Default',
+      IsCompassUpdating: true,
+      IsSavingPlayers: true,
+      IsSavingChunks: true,
+      SaveNewChunks: true,
+      IsUnloadingChunks: true,
+      IsObjectiveMarkersEnabled: true,
+      DeleteOnUniverseStart: false,
+      DeleteOnRemove: false,
+      DisabledFluidTickers: [],
+      ResourceStorage: { Type: 'Hytale' },
+      Plugin: {}
+    }
+
+    if (preset === 'flat') {
+      return {
+        ...base,
+        SpawnProvider: {
+          Id: 'Global',
+          SpawnPoint: {
+            X: 0.5,
+            Y: 80,
+            Z: 0.5,
+            Pitch: 0,
+            Yaw: 180,
+            Roll: 0
+          }
+        },
+        WorldGen: {
+          Type: 'HytaleGenerator',
+          WorldStructure: 'Default_Flat'
+        },
+        IsFallDamageEnabled: true,
+        GameMode: 'Creative',
+        IsSpawningNPC: false
+      }
+    }
+
+    if (preset === 'creative') {
+      return {
+        ...base,
+        WorldGen: {
+          Type: 'Hytale',
+          Name: 'Default',
+          Version: '0.0.0'
+        },
+        IsFallDamageEnabled: false,
+        GameMode: 'Creative',
+        IsSpawningNPC: false,
+        Plugin: {
+          CreativeHub: {
+            StartupInstance: 'Defaults/CreativeHub'
+          }
+        }
+      }
+    }
+
+    return {
+      ...base,
+      WorldGen: {
+        Type: 'Hytale',
+        Name: 'Default',
+        Version: '0.0.0'
+      },
+      IsFallDamageEnabled: true,
+      GameMode: 'Adventure',
+      IsSpawningNPC: true,
+      IsBlockSpawnersEnabled: true,
+      Death: {
+        RespawnController: { Type: 'HomeOrSpawnPoint' },
+        ItemsLossMode: 'Configured',
+        ItemsAmountLossPercentage: 50,
+        ItemsDurabilityLossPercentage: 10
+      },
+      DaytimeDurationSeconds: 1728,
+      NighttimeDurationSeconds: 1152
+    }
+  }
 }
 
 const worlds = new WorldService()
@@ -289,8 +440,12 @@ export function listWorlds(instanceId: string): WorldEntry[] {
   return worlds.list(instanceId)
 }
 
-export function createWorld(instanceId: string, name: string): WorldEntry {
-  return worlds.create(instanceId, name)
+export function createWorld(
+  instanceId: string,
+  name: string,
+  options?: CreateWorldOptions
+): WorldEntry {
+  return worlds.create(instanceId, name, options)
 }
 
 export function renameWorld(instanceId: string, worldId: string, name: string): WorldEntry {
@@ -317,8 +472,11 @@ export function enableModsOnAllSaves(instanceId: string): number {
   return worlds.enableModsOnAllSaves(instanceId)
 }
 
-export function applyModSetToSaves(instanceId: string): ApplyModSetResult {
-  return worlds.applyModSetToSaves(instanceId)
+export function applyModSetToSaves(
+  instanceId: string,
+  worldIds?: string[]
+): ApplyModSetResult {
+  return worlds.applyModSetToSaves(instanceId, worldIds)
 }
 
 export function enableModsInWorldSave(instanceId: string, worldId: string): boolean {

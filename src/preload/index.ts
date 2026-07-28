@@ -93,7 +93,8 @@ const api: SpireApi = {
     return () => ipcRenderer.removeListener('spire:modAutoImported', listener)
   },
   listWorlds: (instanceId) => ipcRenderer.invoke('spire:listWorlds', instanceId),
-  createWorld: (instanceId, name) => ipcRenderer.invoke('spire:createWorld', instanceId, name),
+  createWorld: (instanceId, name, options) =>
+    ipcRenderer.invoke('spire:createWorld', instanceId, name, options),
   renameWorld: (instanceId, worldId, name) =>
     ipcRenderer.invoke('spire:renameWorld', instanceId, worldId, name),
   duplicateWorld: (instanceId, worldId, newName) =>
@@ -102,8 +103,8 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:deleteWorld', instanceId, worldId),
   openWorldFolder: (instanceId, worldId) =>
     ipcRenderer.invoke('spire:openWorldFolder', instanceId, worldId),
-  applyModSetToSaves: (instanceId) =>
-    ipcRenderer.invoke('spire:applyModSetToSaves', instanceId),
+  applyModSetToSaves: (instanceId, worldIds) =>
+    ipcRenderer.invoke('spire:applyModSetToSaves', instanceId, worldIds),
   listServers: (instanceId) => ipcRenderer.invoke('spire:listServers', instanceId),
   upsertServer: (instanceId, server: Partial<ServerEntry> & { name: string; address: string }) =>
     ipcRenderer.invoke('spire:upsertServer', instanceId, server),

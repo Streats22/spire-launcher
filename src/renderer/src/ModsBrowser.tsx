@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type {
   ContentCategory,
   ContentDownloadProgress,
@@ -13,8 +13,11 @@ import type {
 } from '../../shared/types'
 import ContextMenu, { useContextMenu } from './ContextMenu'
 import DownloadProgressPanel from './DownloadProgressPanel'
+import RichContent, { type RichContentMode } from './ui/RichContent'
+import { useResizableSplit } from './ui/useResizableSplit'
 
 const PAGE_SIZE = 40
+const DESC_MODE_KEY = 'spire.mods.descMode'
 
 interface ModsBrowserProps {
   instanceId: string
@@ -71,20 +74,14 @@ function formatBytes(n: number): string {
   return `${n} B`
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+function readDescMode(): RichContentMode {
+  try {
+    const raw = localStorage.getItem(DESC_MODE_KEY)
+    if (raw === 'auto' || raw === 'markdown' || raw === 'html' || raw === 'plain') return raw
+  } catch {
+    // ignore
+  }
+  return 'auto'
 }
 
 export default function ModsBrowser({
@@ -120,10 +117,22 @@ export default function ModsBrowser({
   const [watchStatus, setWatchStatus] = useState<DownloadWatchStatus | null>(null)
   const [contentProgress, setContentProgress] = useState<ContentDownloadProgress | null>(null)
   const [view, setView] = useState<'installed' | 'download'>(initialView)
+  const [descMode, setDescMode] = useState<RichContentMode>(() => readDescMode())
   const { menu, openMenu, closeMenu } = useContextMenu()
   const resultsRef = useRef<HTMLDivElement | null>(null)
   const detailRef = useRef<HTMLElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const {
+    width: detailWidth,
+    setWidth: setDetailWidth,
+    isDragging: isResizingDetail,
+    onResizeStart
+  } = useResizableSplit({
+    storageKey: 'spire.mods.detailWidth',
+    defaultWidth: 400,
+    minWidth: 280,
+    maxWidth: 780
+  })
   const stateRef = useRef({
     query,
     source,
@@ -711,7 +720,16 @@ export default function ModsBrowser({
       {error ? <p className="mods-error">{error}</p> : null}
       {notice && !error ? <p className="mods-notice">{notice}</p> : null}
 
-      <div className={`mods-columns mods-columns-download${selected ? ' with-detail' : ''}`}>
+      <div
+        className={`mods-columns mods-columns-download${selected ? ' with-detail' : ''}${
+          isResizingDetail ? ' is-resizing' : ''
+        }`}
+        style={
+          {
+            '--mods-detail-width': `${detailWidth}px`
+          } as CSSProperties
+        }
+      >
         <div className="mods-results" ref={resultsRef}>
           {results.length === 0 && !loading && !error ? (
             <p className="muted" style={{ padding: 12 }}>
@@ -781,6 +799,25 @@ export default function ModsBrowser({
             </p>
           ) : null}
         </div>
+
+        <div
+          className="mods-split-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize mod list and details"
+          aria-valuenow={Math.round(detailWidth)}
+          tabIndex={0}
+          onPointerDown={onResizeStart}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault()
+              setDetailWidth(detailWidth + 24)
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault()
+              setDetailWidth(detailWidth - 24)
+            }
+          }}
+        />
 
         {selected && listing ? (
           <section className="mod-detail" aria-label="Download options" ref={detailRef}>
@@ -934,10 +971,35 @@ export default function ModsBrowser({
                   </div>
                 ) : null}
 
-                <h3 className="mod-detail-section">Description</h3>
-                <div className="mod-description">
-                  {stripHtml(details?.description || listing.summary || 'No description.')}
+                <div className="mod-detail-section-row">
+                  <h3 className="mod-detail-section">Description</h3>
+                  <label className="field mod-desc-mode">
+                    <span className="sr-only">Description format</span>
+                    <select
+                      value={descMode}
+                      onChange={(e) => {
+                        const next = e.target.value as RichContentMode
+                        setDescMode(next)
+                        try {
+                          localStorage.setItem(DESC_MODE_KEY, next)
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      title="How to render the description"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="markdown">Markdown</option>
+                      <option value="html">HTML</option>
+                      <option value="plain">Plain text</option>
+                    </select>
+                  </label>
                 </div>
+                <RichContent
+                  className="mod-description"
+                  text={details?.description || listing.summary || ''}
+                  mode={descMode}
+                />
               </>
             )}
           </section>

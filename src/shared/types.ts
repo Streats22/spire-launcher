@@ -261,8 +261,19 @@ export interface WorldEntry {
   sizeBytes: number
 }
 
-/** Result of pushing Spire’s enabled mod set into every save’s config.json. */
+/** Matches Hytale Create World presets we can seed into a new save. */
+export type WorldCreatePreset = 'adventure' | 'creative' | 'flat'
+
+export interface CreateWorldOptions {
+  /** Default gen + Adventure (default), Default gen + Creative, or flat world. */
+  preset?: WorldCreatePreset
+  /** World seed; omit or null for a random seed. */
+  seed?: number | null
+}
+
+/** Result of pushing Spire’s enabled mod set into save config.json files. */
 export interface ApplyModSetResult {
+  /** Saves targeted (all, or the selected subset). */
   saves: number
   updated: number
   modCount: number
@@ -520,13 +531,23 @@ export interface SpireApi {
   onDownloadWatchStatus: (handler: (status: DownloadWatchStatus) => void) => () => void
   onModAutoImported: (handler: (result: ModInstallResult) => void) => () => void
   listWorlds: (instanceId: string) => Promise<WorldEntry[]>
-  createWorld: (instanceId: string, name: string) => Promise<WorldEntry>
+  createWorld: (
+    instanceId: string,
+    name: string,
+    options?: CreateWorldOptions
+  ) => Promise<WorldEntry>
   renameWorld: (instanceId: string, worldId: string, name: string) => Promise<WorldEntry>
   duplicateWorld: (instanceId: string, worldId: string, newName?: string) => Promise<WorldEntry>
   deleteWorld: (instanceId: string, worldId: string) => Promise<void>
   openWorldFolder: (instanceId: string, worldId: string) => Promise<void>
-  /** Force Spire-enabled mods on in every save’s config.json. */
-  applyModSetToSaves: (instanceId: string) => Promise<ApplyModSetResult>
+  /**
+   * Force Spire-enabled mods on in save config.json files.
+   * Pass worldIds to target specific saves; omit for all.
+   */
+  applyModSetToSaves: (
+    instanceId: string,
+    worldIds?: string[]
+  ) => Promise<ApplyModSetResult>
   listServers: (instanceId: string) => Promise<ServerEntry[]>
   upsertServer: (
     instanceId: string,

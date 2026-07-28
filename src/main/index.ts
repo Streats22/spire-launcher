@@ -78,6 +78,7 @@ import {
 } from './windows'
 import type {
   CreateInstanceOptions,
+  CreateWorldOptions,
   HytalePatchline,
   InstanceOrganizationItem,
   InstancePatch,
@@ -329,8 +330,10 @@ function registerIpc(): void {
   )
 
   ipcMain.handle('spire:listWorlds', (_e, instanceId: string) => listWorlds(instanceId))
-  ipcMain.handle('spire:createWorld', (_e, instanceId: string, name: string) =>
-    createWorld(instanceId, name)
+  ipcMain.handle(
+    'spire:createWorld',
+    (_e, instanceId: string, name: string, options?: CreateWorldOptions) =>
+      createWorld(instanceId, name, options)
   )
   ipcMain.handle(
     'spire:renameWorld',
@@ -348,8 +351,9 @@ function registerIpc(): void {
   ipcMain.handle('spire:openWorldFolder', async (_e, instanceId: string, worldId: string) => {
     await shell.openPath(getWorldPath(instanceId, worldId))
   })
-  ipcMain.handle('spire:applyModSetToSaves', (_e, instanceId: string) =>
-    applyModSetToSaves(instanceId)
+  ipcMain.handle(
+    'spire:applyModSetToSaves',
+    (_e, instanceId: string, worldIds?: string[]) => applyModSetToSaves(instanceId, worldIds)
   )
   ipcMain.handle('spire:listServers', (_e, instanceId: string) => listServers(instanceId))
   ipcMain.handle(
