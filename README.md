@@ -13,8 +13,11 @@ It takes a Prism Launcher–style approach for Hytale: isolated profiles, separa
 - [Privacy](#privacy)
 - [Features](#features)
 - [Install](#install)
+- [Project site](#project-site)
 - [Quick start](#quick-start)
 - [Profiles & data layout](#profiles--data-layout)
+- [Isolation](#isolation)
+- [Spire packs (`.spirepack`)](#spire-packs-spirepack)
 - [Mods & content](#mods--content)
 - [Worlds & mods](#worlds--mods)
 - [Settings & appearance](#settings--appearance)
@@ -46,10 +49,12 @@ API keys and OAuth tokens never leave your Spire data folder except to the servi
 ### Instances (profiles)
 
 - Create, rename, duplicate, delete, and group instances
+- Import / export **`.spirepack`** (mods + profile; optional worlds)
 - Per-instance **mods**, **userdata**, **prefabs**, **logs**
 - Release / pre-release channels; optional pinned game version
 - Custom Java args; drag-and-drop reorder between groups
 - Home layout: **grid** or **list**
+- Verified isolation: `--user-dir` + Mods junction repaired at launch
 
 ### Launch & auth
 
@@ -119,6 +124,18 @@ To build **all three** official installers in one go, push a `v*` tag or run the
 
 ---
 
+## Project site
+
+A small static landing page lives in [`docs/`](docs/) for **GitHub Pages**:
+
+1. Repo **Settings → Pages**
+2. Source: **Deploy from a branch**
+3. Branch: `main` (or your default) · folder: **/docs**
+
+After that it will be at `https://streats22.github.io/spire-launcher/` (or your custom domain).
+
+---
+
 ## Quick start
 
 1. Install Spire for your OS.
@@ -158,6 +175,41 @@ Spire/
 ```
 
 Official Hytale installs are detected under common paths (e.g. `%APPDATA%\Hytale` on Windows). Spire never replaces the need for a legitimate game license.
+
+---
+
+## Isolation
+
+Each instance gets its own Hytale user data. At launch Spire verifies the user-dir stays under Spire’s `instances/` tree (never the official `%APPDATA%\Hytale\UserData` or OS equivalents) and repairs the Mods junction/symlink when needed.
+
+| Isolated (per instance) | Shared across instances |
+| --- | --- |
+| Userdata (`--user-dir`, `HYTALE_USER_DATA`) | Client binaries (`--app-dir`) |
+| Saves under `userdata/Saves/` | JRE (`--java-exec`) |
+| Mods via `userdata/Mods` → `{instance}/mods` | Official / Spire `game/` install |
+
+**Flags Spire sets:** `--user-dir`, `--app-dir`, `--java-exec`, auth args, and `HYTALE_USER_DATA`.
+
+---
+
+## Spire packs (`.spirepack`)
+
+Share a profile as a zip named `Something.spirepack` (plain `.zip` also imports if `manifest.json` is present).
+
+**Default export** (mods / profile pack):
+
+```text
+manifest.json     # formatVersion 1, name, notes, channel, gameVersion, javaArgs,
+                  # includeWorlds, createdAt, spireMinVersion
+mods/             # including disabled/ + spire-mods.json when present
+prefabs/          # if non-empty
+servers.json      # if present
+```
+
+Optional: check **Include world saves** to add `userdata/Saves/`. Never included: auth, absolute paths, the Mods junction target, logs, or empty legacy `worlds/`.
+
+- **Export:** instance context menu, or Manage → Share pack
+- **Import:** Home → **Import pack…** (always creates a **new** instance; Mods link is recreated)
 
 ---
 
@@ -294,8 +346,8 @@ Users with **Check for updates** enabled fetch that JSON only — no account inf
 - [x] Nexus `nxm://` handler
 - [x] Worlds create presets + apply mod set to saves
 - [x] Rich mod descriptions (Markdown / HTML) + resizable detail pane
-- [ ] Confirm Hytale client isolation flags
-- [ ] Pack import-export (`.spirepack`)
+- [x] Confirm Hytale client isolation flags
+- [x] Pack import-export (`.spirepack`)
 
 ---
 

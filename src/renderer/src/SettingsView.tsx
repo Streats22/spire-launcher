@@ -125,6 +125,46 @@ export default function SettingsView({
     onToast('Keys and Hytale session cleared')
   }
 
+  async function onClearAllData(): Promise<void> {
+    const ok = confirm(
+      'Clear ALL Spire data?\n\nThis deletes instances, worlds, mods, auth, Spire-downloaded game packages, logs, and settings under your Spire data folder.\n\nIt does NOT uninstall Spire or delete the official Hytale install.\n\nThis cannot be undone.'
+    )
+    if (!ok) return
+    const typed = prompt('Type CLEAR to confirm wiping Spire data:')
+    if (typed?.trim().toUpperCase() !== 'CLEAR') {
+      onToast('Clear all data cancelled')
+      return
+    }
+    try {
+      const result = await window.spire.clearAllSpireData()
+      // UI prefs stored in the renderer
+      try {
+        const keys: string[] = []
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = localStorage.key(i)
+          if (key?.startsWith('spire.')) keys.push(key)
+        }
+        for (const key of keys) localStorage.removeItem(key)
+      } catch {
+        // ignore
+      }
+      onSettings(result.settings)
+      onCfKeyChange('')
+      onNexusKeyChange('')
+      onHytaleAuth(await window.spire.getHytaleAuthStatus())
+      onUpdate(null)
+      if (result.ok) {
+        onToast('All Spire data cleared')
+      } else {
+        onToast(
+          `Cleared with issues: ${result.errors.slice(0, 2).join('; ') || 'see logs'}`
+        )
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const accountSummary = hytaleAuth?.signedIn
     ? `Active: ${gameProfileLabel(hytaleAuth, 'signed in')}${
         (hytaleAuth.accounts?.length ?? 0) > 1
@@ -493,6 +533,22 @@ export default function SettingsView({
                   </span>
                 </SettingsCard>
               ) : null}
+
+              <SettingsCard
+                title="Clear all data"
+                stacked
+                actions={
+                  <button className="btn btn-danger" type="button" onClick={() => void onClearAllData()}>
+                    Clear all data…
+                  </button>
+                }
+              >
+                <span className="muted">
+                  Deletes everything Spire stores locally: instances, mods, worlds, accounts, API
+                  keys, Spire game downloads, logs, and settings. Does not uninstall Spire or remove
+                  the official Hytale install.
+                </span>
+              </SettingsCard>
             </section>
           ) : null}
         </div>

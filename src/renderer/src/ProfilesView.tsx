@@ -130,6 +130,19 @@ export default function ProfilesView({
     }
   }
 
+  async function exportPack(): Promise<void> {
+    if (!active) return
+    setBusy(true)
+    try {
+      const result = await window.spire.exportSpirePack(active.id)
+      if (!result.canceled) onToast(result.message)
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function installClient(repair = false): Promise<void> {
     if (!active) return
     if (!auth?.signedIn || !auth.sessionValid) {
@@ -309,6 +322,19 @@ export default function ProfilesView({
           </button>
           <button className="btn" disabled={busy} onClick={() => void duplicate()}>
             Copy
+          </button>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>Share pack</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Export a <code>.spirepack</code> with mods, prefabs, and profile settings. You can choose
+          whether to include world saves, or cancel.
+        </p>
+        <div className="row">
+          <button className="btn" disabled={busy} onClick={() => void exportPack()}>
+            Export pack…
           </button>
         </div>
       </div>

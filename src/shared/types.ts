@@ -113,6 +113,42 @@ export interface InstanceOrganizationItem {
   sortIndex: number
 }
 
+/** `.spirepack` zip manifest (formatVersion 1). */
+export interface SpirePackManifest {
+  formatVersion: number
+  name: string
+  notes: string
+  channel: InstanceChannel
+  gameVersion: string | null
+  javaArgs: string[]
+  includeWorlds: boolean
+  createdAt: string
+  spireMinVersion: string
+}
+
+export interface ExportSpirePackOptions {
+  /**
+   * When omitted, Spire asks with three choices: without saves / include saves / cancel.
+   * Pass true/false to skip that prompt (e.g. Manage UI checkbox).
+   */
+  includeWorlds?: boolean
+  destPath?: string | null
+}
+
+export interface ExportSpirePackResult {
+  ok: boolean
+  canceled: boolean
+  path: string | null
+  message: string
+}
+
+export interface ImportSpirePackResult {
+  ok: boolean
+  canceled: boolean
+  instance: SpireInstance | null
+  message: string
+}
+
 export interface InstallStatus {
   configured: boolean
   gameInstallPath: string | null
@@ -308,6 +344,16 @@ export interface LocalDataInfo {
   gameRoot: string
 }
 
+/** Result of wiping Spire AppData via Settings → Clear all data. */
+export interface ClearAllDataResult {
+  ok: boolean
+  spireRoot: string
+  removed: string[]
+  errors: string[]
+  settings: SpireSettings
+  dataInfo: LocalDataInfo
+}
+
 export type HytalePatchline = 'release' | 'pre-release'
 
 export interface HytaleDeviceLogin {
@@ -487,6 +533,12 @@ export interface SpireApi {
   openRunWindow: (instanceId: string) => Promise<void>
   focusMainView: (view: string) => Promise<void>
   clearLocalCredentials: () => Promise<SpireSettings>
+  /**
+   * Delete all Spire AppData (instances, auth, game cache, logs, settings).
+   * Does not remove the Spire app install or official Hytale.
+   */
+  clearAllSpireData: () => Promise<ClearAllDataResult>
+  onDataCleared: (handler: () => void) => () => void
   listInstances: () => Promise<SpireInstance[]>
   createInstance: (options: CreateInstanceOptions | string) => Promise<SpireInstance>
   updateInstance: (id: string, patch: InstancePatch) => Promise<SpireInstance>
@@ -499,6 +551,11 @@ export interface SpireApi {
   deleteInstance: (id: string) => Promise<void>
   setActiveInstance: (id: string) => Promise<SpireSettings>
   openInstanceFolder: (id: string) => Promise<void>
+  exportSpirePack: (
+    instanceId: string,
+    options?: ExportSpirePackOptions
+  ) => Promise<ExportSpirePackResult>
+  importSpirePack: (filePath?: string | null) => Promise<ImportSpirePackResult>
   launchInstance: (id: string) => Promise<LaunchResult>
   searchMods: (
     source: ModSource,

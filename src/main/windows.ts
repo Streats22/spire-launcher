@@ -127,6 +127,19 @@ export function focusMainView(view: string): void {
   mainWindow.webContents.send('spire:navigate', view)
 }
 
+/** Close manage / run windows; leave the main window open. */
+export function closeAuxiliaryWindows(): void {
+  for (const win of [...manageWindows.values(), ...runWindows.values()]) {
+    try {
+      if (!win.isDestroyed()) win.close()
+    } catch {
+      // ignore
+    }
+  }
+  manageWindows.clear()
+  runWindows.clear()
+}
+
 export async function openLogsFolder(): Promise<void> {
   await shell.openPath(getLogsDir())
 }

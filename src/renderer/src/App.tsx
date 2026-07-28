@@ -83,6 +83,16 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    return window.spire.onDataCleared(() => {
+      void refresh()
+      void window.spire.getHytaleAuthStatus().then(setHytaleAuth)
+      setUpdate(null)
+      setView('home')
+      setCreating(false)
+    })
+  }, [refresh])
+
+  useEffect(() => {
     void window.spire.checkForUpdate().then(setUpdate)
   }, [])
 
@@ -151,6 +161,38 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  async function onExportPack(instanceId: string): Promise<void> {
+    setBusy(true)
+    try {
+      // Omit includeWorlds so main shows: Without saves / Include saves / Cancel
+      const result = await window.spire.exportSpirePack(instanceId)
+      if (!result.canceled) setToast(result.message)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onImportPack(): Promise<void> {
+    setBusy(true)
+    try {
+      const result = await window.spire.importSpirePack()
+      if (result.canceled) return
+      await refresh()
+      if (result.instance) {
+        await selectInstance(result.instance.id)
+        setToast(result.message)
+      } else {
+        setToast(result.message)
+      }
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function openInstanceMenu(event: React.MouseEvent, instance: SpireInstance): void {
     void selectInstance(instance.id)
     const canLaunch = Boolean(status?.valid || instance.gameVersion)
@@ -175,6 +217,12 @@ export default function App(): React.JSX.Element {
         id: 'folder',
         label: 'Open folder',
         onSelect: () => void window.spire.openInstanceFolder(instance.id)
+      },
+      {
+        id: 'export',
+        label: 'Export pack…',
+        disabled: busy,
+        onSelect: () => void onExportPack(instance.id)
       },
       { id: 'sep', label: '', separator: true },
       {
@@ -322,6 +370,7 @@ export default function App(): React.JSX.Element {
               onLaunch={(id) => void onLaunch(id)}
               onContextMenu={openInstanceMenu}
               onCreateInstance={openCreateDialog}
+              onImportPack={() => void onImportPack()}
               onChanged={refresh}
               onToast={setToast}
               onOpenInstall={() => setView('versions')}

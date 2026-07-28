@@ -43,6 +43,11 @@ const defaultSettings = (): SpireSettings => ({
   instanceGroups: []
 })
 
+/** Fresh settings after a full data wipe (may still get install path autofilled). */
+export function defaultSettingsForReset(): SpireSettings {
+  return defaultSettings()
+}
+
 export function ensureSpireDirs(): void {
   mkdirSync(getSpireRoot(), { recursive: true })
 }

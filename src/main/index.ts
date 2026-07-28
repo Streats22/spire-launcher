@@ -29,6 +29,7 @@ import {
   updateInstance
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
+import { exportInstancePack, importInstancePack } from './pack'
 import { logError, readPersistedLogs, readInstanceRunLog, clearRunLog } from './logging'
 import {
   getModDetails,
@@ -57,6 +58,7 @@ import {
   loadSettings,
   updateSettings
 } from './settings'
+import { clearAllSpireData } from './clearData'
 import { checkForUpdate } from './updates'
 import {
   applyModSetToSaves,
@@ -224,6 +226,7 @@ function registerIpc(): void {
     focusMainView(view)
   })
   ipcMain.handle('spire:clearLocalCredentials', () => clearLocalCredentials())
+  ipcMain.handle('spire:clearAllSpireData', () => clearAllSpireData())
 
   ipcMain.handle('spire:listInstances', () => listInstances())
   ipcMain.handle('spire:createInstance', (_e, options: CreateInstanceOptions | string) =>
@@ -249,6 +252,14 @@ function registerIpc(): void {
   })
   ipcMain.handle('spire:setActiveInstance', (_e, id: string) =>
     updateSettings({ activeInstanceId: id })
+  )
+  ipcMain.handle(
+    'spire:exportSpirePack',
+    (_e, id: string, options?: { includeWorlds?: boolean; destPath?: string | null }) =>
+      exportInstancePack(id, options ?? {})
+  )
+  ipcMain.handle('spire:importSpirePack', (_e, filePath?: string | null) =>
+    importInstancePack(filePath)
   )
   ipcMain.handle('spire:openInstanceFolder', async (_e, id: string) => {
     await shell.openPath(getInstancePath(id))

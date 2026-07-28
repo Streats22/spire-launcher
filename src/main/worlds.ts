@@ -490,3 +490,9 @@ export function startWorldSaveWatch(instanceId: string): void {
 export function stopWorldSaveWatch(instanceId: string): void {
   worlds.stopSaveWatch(instanceId)
 }
+
+export function stopAllWorldSaveWatches(): void {
+  for (const id of [...saveWatchers.keys()]) {
+    worlds.stopSaveWatch(id)
+  }
+}

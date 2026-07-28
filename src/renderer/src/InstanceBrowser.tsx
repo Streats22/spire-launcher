@@ -14,6 +14,7 @@ interface InstanceBrowserProps {
   onLaunch: (id: string) => void
   onContextMenu: (e: MouseEvent, instance: SpireInstance) => void
   onCreateInstance: () => void
+  onImportPack: () => void
   onChanged: () => Promise<void>
   onToast: (message: string) => void
   onOpenInstall: () => void
@@ -44,6 +45,7 @@ export default function InstanceBrowser({
   onLaunch,
   onContextMenu,
   onCreateInstance,
+  onImportPack,
   onChanged,
   onToast,
   onOpenInstall
@@ -203,6 +205,14 @@ export default function InstanceBrowser({
           </button>
         )}
         <button
+          className="btn"
+          type="button"
+          disabled={busy || addingGroup}
+          onClick={onImportPack}
+        >
+          Import pack…
+        </button>
+        <button
           className="btn btn-primary"
           type="button"
           disabled={busy || addingGroup}
@@ -234,6 +244,9 @@ export default function InstanceBrowser({
               onClick={onCreateInstance}
             >
               Add Instance
+            </button>
+            <button className="btn" type="button" disabled={busy} onClick={onImportPack}>
+              Import pack…
             </button>
             <button className="btn" type="button" onClick={onOpenInstall}>
               Install

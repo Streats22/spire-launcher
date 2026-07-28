@@ -1,10 +1,6 @@
 import {
   existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  symlinkSync
+  readdirSync
 } from 'fs'
 import { spawn, type ChildProcess } from 'child_process'
 import { basename, dirname, join } from 'path'
@@ -24,6 +20,7 @@ import {
 import { resolveClientPath, resolveJavaPath } from './paths'
 import { loadSettings } from './settings'
 import { broadcastRunLog, getMainWindow, openRunWindow } from './windows'
+import { prepareInstanceIsolation } from './isolation'
 import {
   enableModsOnAllSaves,
   startWorldSaveWatch,
@@ -93,6 +90,22 @@ export class LaunchService {
     }
   }
 
+  stopAll(): void {
+    for (const [id, child] of this.#running) {
+      try {
+        if (!child.killed) child.kill()
+      } catch {
+        // ignore
+      }
+      try {
+        stopWorldSaveWatch(id)
+      } catch {
+        // ignore
+      }
+    }
+    this.#running.clear()
+  }
+
   async launchInstance(id: string): Promise<LaunchResult> {
     const instance = getInstance(id)
     if (!instance) {
@@ -117,7 +130,14 @@ export class LaunchService {
     const instanceRoot = getInstancePath(id)
     const userdata = join(instanceRoot, 'userdata')
     const mods = join(instanceRoot, 'mods')
-    this.#ensureUserDirMods(userdata, mods)
+
+    let isolation
+    try {
+      isolation = prepareInstanceIsolation(id)
+    } catch (err) {
+      return this.#fail(id, instance.name, errorMessage(err))
+    }
+
     try {
       const n = enableModsOnAllSaves(id)
       if (n > 0) {
@@ -182,7 +202,20 @@ export class LaunchService {
     this.#emitRunLine(id, 'system', `Client: ${resolved.clientPath}`)
     this.#emitRunLine(id, 'system', `App dir: ${resolved.appDir}`)
     this.#emitRunLine(id, 'system', `Java: ${resolved.javaPath}`)
-    this.#emitRunLine(id, 'system', `User dir: ${userdata}`)
+    this.#emitRunLine(
+      id,
+      'system',
+      `User dir: ${userdata} (${isolation.isolated ? 'isolated' : 'NOT isolated'})`
+    )
+    const modsLine =
+      isolation.modsLink === 'ok'
+        ? 'Mods link: ok'
+        : isolation.modsLink === 'repaired'
+          ? `Mods link: repaired${isolation.modsLinkDetail ? ` — ${isolation.modsLinkDetail}` : ''}`
+          : `Mods link: ${isolation.modsLink}${
+              isolation.modsLinkDetail ? ` — ${isolation.modsLinkDetail}` : ''
+            }`
+    this.#emitRunLine(id, 'system', modsLine)
     this.#emitRunLine(id, 'system', `Profile: ${playerName} (${profileUuid})`)
 
     try {
@@ -316,34 +349,6 @@ export class LaunchService {
       }
     }
     return clientDir
-  }
-
-  /**
-   * Hytale loads mods from `{user-dir}/Mods`. Spire keeps mods at `instance/mods`,
-   * so link that folder in before spawn.
-   */
-  #ensureUserDirMods(userDir: string, modsSource: string): void {
-    mkdirSync(userDir, { recursive: true })
-    mkdirSync(modsSource, { recursive: true })
-    const dest = join(userDir, 'Mods')
-
-    try {
-      const st = lstatSync(dest)
-      if (st.isSymbolicLink()) return
-      if (st.isDirectory() && readdirSync(dest).length === 0) {
-        rmSync(dest, { recursive: true, force: true })
-      } else {
-        return
-      }
-    } catch {
-      // missing — create link below
-    }
-
-    try {
-      symlinkSync(modsSource, dest, process.platform === 'win32' ? 'junction' : 'dir')
-    } catch (err) {
-      logWarn('launch', `Could not link Mods into user-dir: ${errorMessage(err)}`)
-    }
   }
 
   #resolveSpawnTarget(clientPath: string): { command: string; argsPrefix: string[] } {

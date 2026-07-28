@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spire — Hytale instance launcher</title>
+    <meta
+      name="description"
+      content="Spire is a cross-platform Hytale instance launcher. Isolated profiles, mods, and worlds — without redistributing the game."
+    />
+    <meta property="og:title" content="Spire — Hytale instance launcher" />
+    <meta
+      property="og:description"
+      content="Prism-style profiles for Hytale. Local-first, no Spire accounts, no telemetry."
+    />
+    <meta property="og:image" content="assets/logo.png" />
+    <meta name="theme-color" content="#10141a" />
+    <link rel="icon" href="assets/icon.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <header class="top">
+      <a class="top-brand" href="#top" aria-label="Spire home">
+        <img src="assets/logo.png" alt="" width="28" height="28" />
+        Spire
+      </a>
+      <nav class="top-nav">
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#get">Download</a>
+        <a
+          class="top-gh"
+          href="https://github.com/Streats22/spire-launcher"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="brand-mark">
+            <img src="assets/logo.png" alt="" width="72" height="72" />
+            <span>Spire</span>
+          </p>
+          <h1>Run Hytale your way — profiles, mods, and worlds kept apart.</h1>
+          <p class="lede">
+            A Prism-style instance launcher for macOS, Windows, and Linux. You own the game through
+            official channels; Spire only manages what surrounds it.
+          </p>
+          <div class="cta-row">
+            <a
+              class="btn btn-primary"
+              href="https://github.com/Streats22/spire-launcher/releases"
+              rel="noopener noreferrer"
+              >Download</a
+            >
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/Streats22/spire-launcher"
+              rel="noopener noreferrer"
+              >View source</a
+            >
+          </div>
+          <p class="hero-note">Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="tower">
+            <span class="tower-glow"></span>
+            <div class="panel panel-a">
+              <span class="dot"></span>
+              <span class="line w60"></span>
+              <span class="line w40"></span>
+            </div>
+            <div class="panel panel-b">
+              <span class="chip">release</span>
+              <span class="line w80"></span>
+              <span class="line w55"></span>
+              <span class="line w70"></span>
+            </div>
+            <div class="panel panel-c">
+              <span class="line w45"></span>
+              <span class="line w65"></span>
+              <span class="accent-bar"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="features">
+        <h2>What Spire does</h2>
+        <p class="section-lede">
+          One job per profile: isolate userdata, install content, launch cleanly.
+        </p>
+        <ul class="feature-list">
+          <li>
+            <strong>Isolated instances</strong>
+            <span>Separate mods, saves, prefabs, and logs — verified at every launch.</span>
+          </li>
+          <li>
+            <strong>Official auth &amp; client</strong>
+            <span>Sign in with Hytale OAuth; point at an install or fetch builds through Spire.</span>
+          </li>
+          <li>
+            <strong>Mods from the places you already use</strong>
+            <span>CurseForge, Nexus, Thunderstore, Modtale / Modifold, Modrinth-ready.</span>
+          </li>
+          <li>
+            <strong>Share with .spirepack</strong>
+            <span>Export mods and profile settings; optionally include world saves.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-alt" id="privacy">
+        <h2>Local-first by design</h2>
+        <p class="section-lede">
+          Spire is an app on your machine. No Spire accounts, no cloud sync, no telemetry.
+        </p>
+        <dl class="privacy-grid">
+          <div>
+            <dt>Stays on disk</dt>
+            <dd>Profiles, keys, mods, and tokens live under your Spire data folder.</dd>
+          </div>
+          <div>
+            <dt>Talks only when you ask</dt>
+            <dd>CurseForge, Nexus, or Hytale APIs fire only for features you use.</dd>
+          </div>
+          <div>
+            <dt>Optional updates</dt>
+            <dd>A public JSON check — no identity — and you can turn it off.</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="band" id="get">
+        <h2>Get Spire</h2>
+        <p class="section-lede">
+          Grab the latest installer from GitHub Releases, or build from source.
+        </p>
+        <div class="cta-row">
+          <a
+            class="btn btn-primary"
+            href="https://github.com/Streats22/spire-launcher/releases/latest"
+            rel="noopener noreferrer"
+            >Latest release</a
+          >
+          <a
+            class="btn btn-ghost"
+            href="https://github.com/Streats22/spire-launcher#quick-start"
+            rel="noopener noreferrer"
+            >Quick start</a
+          >
+        </div>
+        <ul class="platforms">
+          <li>Windows · Setup &amp; portable</li>
+          <li>macOS · DMG</li>
+          <li>Linux · AppImage, deb, tar.gz</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        <strong>Spire</strong>
+        · third-party launcher ·
+        <a href="https://github.com/Streats22/spire-launcher" rel="noopener noreferrer">source</a>
+      </p>
+      <p class="muted">
+        Hytale is a trademark of Hypixel Studios / Riot Games. Spire does not redistribute the game
+        client.
+      </p>
+    </footer>
+  </body>
+</html>

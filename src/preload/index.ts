@@ -30,6 +30,14 @@ const api: SpireApi = {
   openRunWindow: (instanceId) => ipcRenderer.invoke('spire:openRunWindow', instanceId),
   focusMainView: (view) => ipcRenderer.invoke('spire:focusMainView', view),
   clearLocalCredentials: () => ipcRenderer.invoke('spire:clearLocalCredentials'),
+  clearAllSpireData: () => ipcRenderer.invoke('spire:clearAllSpireData'),
+  onDataCleared: (handler) => {
+    const listener = (): void => {
+      handler()
+    }
+    ipcRenderer.on('spire:dataCleared', listener)
+    return () => ipcRenderer.removeListener('spire:dataCleared', listener)
+  },
   listInstances: () => ipcRenderer.invoke('spire:listInstances'),
   createInstance: (options: CreateInstanceOptions | string) =>
     ipcRenderer.invoke('spire:createInstance', options),
@@ -45,6 +53,9 @@ const api: SpireApi = {
   deleteInstance: (id) => ipcRenderer.invoke('spire:deleteInstance', id),
   setActiveInstance: (id) => ipcRenderer.invoke('spire:setActiveInstance', id),
   openInstanceFolder: (id) => ipcRenderer.invoke('spire:openInstanceFolder', id),
+  exportSpirePack: (instanceId, options) =>
+    ipcRenderer.invoke('spire:exportSpirePack', instanceId, options ?? {}),
+  importSpirePack: (filePath) => ipcRenderer.invoke('spire:importSpirePack', filePath ?? null),
   launchInstance: (id) => ipcRenderer.invoke('spire:launchInstance', id),
   searchMods: (source, options?: ModSearchOptions) =>
     ipcRenderer.invoke('spire:searchMods', source, options ?? {}),
