@@ -2,6 +2,7 @@ node_modules
 out
 release
 dist
+.local-dev
 .DS_Store
 *.log
 .env
