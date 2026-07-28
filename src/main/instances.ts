@@ -55,6 +55,7 @@ export function ensureInstanceLayout(id: string): void {
   mkdirSync(join(root, 'mods'), { recursive: true })
   mkdirSync(join(root, 'userdata'), { recursive: true })
   mkdirSync(join(root, 'worlds'), { recursive: true })
+  mkdirSync(join(root, 'prefabs'), { recursive: true })
   mkdirSync(join(root, 'logs'), { recursive: true })
 }
 

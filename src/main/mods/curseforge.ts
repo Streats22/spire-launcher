@@ -1,4 +1,6 @@
 import type {
+  ContentCategory,
+  ContentKind,
   ModDetails,
   ModFileInfo,
   ModImage,
@@ -12,6 +14,7 @@ import {
   CURSEFORGE_HYTALE_GAME_ID,
   SPIRE_USER_AGENT
 } from './constants'
+import { curseForgeClassId, normalizeContentKind } from './contentKinds'
 
 class CurseForgeError extends Error {
   constructor(message: string) {
@@ -53,6 +56,7 @@ interface CfMod {
   downloadCount?: number
   dateCreated?: string
   dateModified?: string
+  classId?: number
   authors?: { name: string }[]
   logo?: { thumbnailUrl?: string; url?: string } | null
   links?: { websiteUrl?: string }
@@ -126,8 +130,10 @@ export async function searchCurseForge(
   apiKey: string,
   options: ModSearchOptions = {}
 ): Promise<ModSearchResult> {
+  const kind = normalizeContentKind(options.kind)
   const params = new URLSearchParams({
     gameId: String(CURSEFORGE_HYTALE_GAME_ID),
+    classId: String(curseForgeClassId(kind)),
     pageSize: String(options.limit ?? 40),
     index: String(options.offset ?? 0),
     sortField: sortField(options.sort),
@@ -135,6 +141,9 @@ export async function searchCurseForge(
   })
   const trimmed = options.query?.trim()
   if (trimmed) params.set('searchFilter', trimmed)
+  if (options.categoryId != null && options.categoryId > 0) {
+    params.set('categoryId', String(options.categoryId))
+  }
 
   const json = await cfFetch<{ data: CfMod[]; pagination?: { totalCount?: number } }>(
     apiKey,
@@ -158,14 +167,41 @@ export async function searchCurseForge(
 
 /** Keyless fallback: point the user at the public catalog (no scraping). */
 export function keylessCurseForgeSearch(options: ModSearchOptions = {}): ModSearchResult {
+  const kind = normalizeContentKind(options.kind)
   const q = options.query?.trim()
   return {
     mods: [],
     total: 0,
     notice: q
       ? `No embedded CurseForge key — opened search in your browser, or use Import file after downloading.`
-      : `No embedded CurseForge key — browse CurseForge in your browser, then Import file. Optional key in Settings enables in-app search & fast download.`
+      : `No embedded CurseForge key — browse ${kind} on CurseForge in your browser, then Import file. Optional key in Settings enables in-app search & fast download.`
   }
+}
+
+export async function listCurseForgeCategories(
+  apiKey: string,
+  kind: ContentKind
+): Promise<ContentCategory[]> {
+  const classId = curseForgeClassId(kind)
+  const json = await cfFetch<{
+    data: {
+      id: number
+      name: string
+      slug: string
+      classId?: number
+      parentCategoryId?: number | null
+    }[]
+  }>(apiKey, `/categories?gameId=${CURSEFORGE_HYTALE_GAME_ID}`)
+
+  return (json.data ?? [])
+    .filter((c) => c.classId === classId && c.id !== classId)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      kind
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function listCurseForgeFiles(apiKey: string, modId: string): Promise<ModFileInfo[]> {

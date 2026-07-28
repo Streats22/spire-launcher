@@ -31,6 +31,7 @@ import {
   importLocalModFile,
   installFromNxmLink,
   installMod,
+  listContentCategories,
   listInstalledMods,
   removeInstalledMod,
   searchMods
@@ -217,6 +218,10 @@ function registerIpc(): void {
   ipcMain.handle('spire:searchMods', (_e, source: ModSource, options: ModSearchOptions = {}) =>
     searchMods(source, options)
   )
+  ipcMain.handle(
+    'spire:listContentCategories',
+    (_e, kind: import('../shared/types').ContentKind) => listContentCategories(kind)
+  )
   ipcMain.handle('spire:getModDetails', (_e, source: ModSource, modId: string) =>
     getModDetails(source, modId)
   )
@@ -232,7 +237,8 @@ function registerIpc(): void {
       modId: string,
       fileId?: string,
       mode?: 'slow' | 'quick',
-      modName?: string
+      modName?: string,
+      kind?: import('../shared/types').ContentKind
     ) => {
       const result = await installMod(
         instanceId,
@@ -240,7 +246,8 @@ function registerIpc(): void {
         modId,
         fileId,
         mode ?? 'slow',
-        modName
+        modName,
+        kind ?? 'mods'
       )
       if ((result.needsManualDownload || result.needsManualNxm) && result.pageUrl) {
         await shell.openExternal(result.pageUrl)

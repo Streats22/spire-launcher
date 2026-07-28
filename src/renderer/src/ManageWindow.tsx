@@ -11,7 +11,7 @@ import ModsBrowser from './ModsBrowser'
 import ProfilesView from './ProfilesView'
 import { applyTheme, normalizeTheme } from './theme'
 
-type Tab = 'profile' | 'mods' | 'worlds' | 'servers' | 'logs'
+type Tab = 'profile' | 'mods' | 'worlds' | 'prefabs' | 'bootstrap' | 'translations' | 'servers' | 'logs'
 
 interface ManageWindowProps {
   instanceId: string
@@ -25,7 +25,15 @@ function formatBytes(n: number): string {
 }
 
 function parseTab(value?: string): Tab {
-  if (value === 'mods' || value === 'worlds' || value === 'servers' || value === 'logs') {
+  if (
+    value === 'mods' ||
+    value === 'worlds' ||
+    value === 'prefabs' ||
+    value === 'bootstrap' ||
+    value === 'translations' ||
+    value === 'servers' ||
+    value === 'logs'
+  ) {
     return value
   }
   return 'profile'
@@ -52,6 +60,7 @@ export default function ManageWindow({
     port: '5520',
     notes: ''
   })
+  const [worldsView, setWorldsView] = useState<'local' | 'download'>('local')
   const [busy, setBusy] = useState(false)
   const { menu, openMenu, closeMenu } = useContextMenu()
 
@@ -112,6 +121,10 @@ export default function ManageWindow({
   useEffect(() => {
     if (tab === 'logs') void refreshLogs()
   }, [tab, refreshLogs])
+
+  useEffect(() => {
+    if (tab !== 'worlds') setWorldsView('local')
+  }, [tab])
 
   useEffect(() => {
     return window.spire.onManageNavigate((next) => setTab(parseTab(next)))
@@ -252,6 +265,9 @@ export default function ManageWindow({
     { id: 'profile', label: 'Profile', hint: 'Name, channel, client' },
     { id: 'mods', label: 'Mods', hint: `${modsCount} installed` },
     { id: 'worlds', label: 'Worlds', hint: `${worlds.length} saved` },
+    { id: 'prefabs', label: 'Prefabs', hint: 'Structures' },
+    { id: 'bootstrap', label: 'Bootstraps', hint: 'Early plugins' },
+    { id: 'translations', label: 'Translations', hint: 'Language packs' },
     { id: 'servers', label: 'Servers', hint: `${servers.length} saved` },
     { id: 'logs', label: 'Logs', hint: 'Run output' }
   ]
@@ -319,6 +335,61 @@ export default function ManageWindow({
             <ModsBrowser
               instanceId={activeId}
               instanceName={instance.name}
+              kind="mods"
+              onToast={(message) => {
+                setToast(message)
+                void refreshContent()
+              }}
+              showModPhotos={settings?.showModPhotos !== false}
+              onShowModPhotosChange={(show) => {
+                void window.spire.updateSettings({ showModPhotos: show }).then(setSettings)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {tab === 'prefabs' && activeId && instance ? (
+          <div className="page manage-mods-page">
+            <ModsBrowser
+              instanceId={activeId}
+              instanceName={instance.name}
+              kind="prefabs"
+              onToast={(message) => {
+                setToast(message)
+                void refreshContent()
+              }}
+              showModPhotos={settings?.showModPhotos !== false}
+              onShowModPhotosChange={(show) => {
+                void window.spire.updateSettings({ showModPhotos: show }).then(setSettings)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {tab === 'bootstrap' && activeId && instance ? (
+          <div className="page manage-mods-page">
+            <ModsBrowser
+              instanceId={activeId}
+              instanceName={instance.name}
+              kind="bootstrap"
+              onToast={(message) => {
+                setToast(message)
+                void refreshContent()
+              }}
+              showModPhotos={settings?.showModPhotos !== false}
+              onShowModPhotosChange={(show) => {
+                void window.spire.updateSettings({ showModPhotos: show }).then(setSettings)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {tab === 'translations' && activeId && instance ? (
+          <div className="page manage-mods-page">
+            <ModsBrowser
+              instanceId={activeId}
+              instanceName={instance.name}
+              kind="translations"
               onToast={(message) => {
                 setToast(message)
                 void refreshContent()
@@ -333,8 +404,44 @@ export default function ManageWindow({
 
         {tab === 'worlds' ? (
           <div className="page">
-            <h1 className="page-title">Worlds</h1>
-            <p className="page-sub">Create, rename, duplicate, or delete worlds for this instance.</p>
+            {worldsView === 'download' && activeId && instance ? (
+              <div className="manage-mods-page" style={{ paddingTop: 0 }}>
+                <ModsBrowser
+                  instanceId={activeId}
+                  instanceName={instance.name}
+                  kind="worlds"
+                  initialView="download"
+                  onToast={(message) => {
+                    setToast(message)
+                    void refreshContent()
+                    setWorldsView('local')
+                  }}
+                  showModPhotos={settings?.showModPhotos !== false}
+                  onShowModPhotosChange={(show) => {
+                    void window.spire.updateSettings({ showModPhotos: show }).then(setSettings)
+                  }}
+                />
+                <div className="row" style={{ marginTop: 12 }}>
+                  <button className="btn" type="button" onClick={() => setWorldsView('local')}>
+                    ← Back to worlds
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+            <div className="group-header">
+              <div>
+                <h1 className="page-title">Worlds</h1>
+                <p className="page-sub">Create, rename, duplicate, delete, or download world packs.</p>
+              </div>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => setWorldsView('download')}
+              >
+                Download
+              </button>
+            </div>
             <div className="row" style={{ marginBottom: 12 }}>
               <input
                 value={newWorldName}
@@ -435,6 +542,8 @@ export default function ManageWindow({
                   </div>
                 ))}
               </div>
+            )}
+              </>
             )}
           </div>
         ) : null}

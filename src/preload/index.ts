@@ -44,12 +44,22 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:searchMods', source, options ?? {}),
   getModDetails: (source, modId) => ipcRenderer.invoke('spire:getModDetails', source, modId),
   getModFiles: (source, modId) => ipcRenderer.invoke('spire:getModFiles', source, modId),
-  installMod: (instanceId, source, modId, fileId, mode, modName) =>
-    ipcRenderer.invoke('spire:installMod', instanceId, source, modId, fileId, mode, modName),
+  installMod: (instanceId, source, modId, fileId, mode, modName, kind) =>
+    ipcRenderer.invoke(
+      'spire:installMod',
+      instanceId,
+      source,
+      modId,
+      fileId,
+      mode,
+      modName,
+      kind
+    ),
   installFromNxm: (instanceId, nxmUrl) =>
     ipcRenderer.invoke('spire:installFromNxm', instanceId, nxmUrl),
   importLocalMod: (instanceId) => ipcRenderer.invoke('spire:importLocalMod', instanceId),
   listInstalledMods: (instanceId) => ipcRenderer.invoke('spire:listInstalledMods', instanceId),
+  listContentCategories: (kind) => ipcRenderer.invoke('spire:listContentCategories', kind),
   removeInstalledMod: (instanceId, source, modId) =>
     ipcRenderer.invoke('spire:removeInstalledMod', instanceId, source, modId),
   setModEnabled: (instanceId, source, modId, enabled) =>

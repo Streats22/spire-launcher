@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  ContentCategory,
+  ContentKind,
   DownloadWatchStatus,
   InstalledMod,
   ModDetails,
@@ -18,6 +20,40 @@ interface ModsBrowserProps {
   onToast: (message: string) => void
   showModPhotos: boolean
   onShowModPhotosChange: (show: boolean) => void
+  /** Locked content class for this browser surface. */
+  kind?: ContentKind
+  /** Start on download browse instead of installed list. */
+  initialView?: 'installed' | 'download'
+}
+
+function kindLabel(kind: ContentKind): string {
+  switch (kind) {
+    case 'prefabs':
+      return 'Prefabs'
+    case 'worlds':
+      return 'Worlds'
+    case 'bootstrap':
+      return 'Bootstraps'
+    case 'translations':
+      return 'Translations'
+    default:
+      return 'Mods'
+  }
+}
+
+function kindInstallHint(kind: ContentKind): string {
+  switch (kind) {
+    case 'worlds':
+      return 'World packs install into this instance’s worlds/ folder.'
+    case 'prefabs':
+      return 'Prefabs install into prefabs/. Copy into a world save’s prefabs/ folder to place in-game.'
+    case 'bootstrap':
+      return 'Bootstraps / early plugins install into mods/ so the client can load them.'
+    case 'translations':
+      return 'Translations install into mods/ as loadable packs.'
+    default:
+      return 'Mods install into mods/.'
+  }
 }
 
 function formatDownloads(n: number): string {
@@ -54,11 +90,17 @@ export default function ModsBrowser({
   instanceName,
   onToast,
   showModPhotos,
-  onShowModPhotosChange
+  onShowModPhotosChange,
+  kind = 'mods',
+  initialView = 'installed'
 }: ModsBrowserProps): React.JSX.Element {
-  const [source, setSource] = useState<ModSource>('curseforge')
+  const contentKind = kind
+  const kindOnlyCurseForge = contentKind !== 'mods'
+  const [source, setSource] = useState<ModSource>(kindOnlyCurseForge ? 'curseforge' : 'curseforge')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ModSort>('downloads')
+  const [categoryId, setCategoryId] = useState<number | null>(null)
+  const [categories, setCategories] = useState<ContentCategory[]>([])
   const [nxmLink, setNxmLink] = useState('')
   const [results, setResults] = useState<ModListing[]>([])
   const [total, setTotal] = useState(0)
@@ -74,7 +116,7 @@ export default function ModsBrowser({
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [watchStatus, setWatchStatus] = useState<DownloadWatchStatus | null>(null)
-  const [view, setView] = useState<'installed' | 'download'>('installed')
+  const [view, setView] = useState<'installed' | 'download'>(initialView)
   const { menu, openMenu, closeMenu } = useContextMenu()
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const resultsRef = useRef<HTMLDivElement | null>(null)
@@ -82,6 +124,8 @@ export default function ModsBrowser({
     query,
     source,
     sort,
+    categoryId,
+    kind: contentKind,
     resultsLength: 0,
     hasMore: false,
     loading: false,
@@ -91,6 +135,8 @@ export default function ModsBrowser({
     query,
     source,
     sort,
+    categoryId,
+    kind: contentKind,
     resultsLength: results.length,
     hasMore,
     loading,
@@ -98,12 +144,31 @@ export default function ModsBrowser({
   }
 
   const refreshInstalled = useCallback(async () => {
-    setInstalled(await window.spire.listInstalledMods(instanceId))
-  }, [instanceId])
+    const all = await window.spire.listInstalledMods(instanceId)
+    setInstalled(all.filter((m) => (m.kind ?? 'mods') === contentKind))
+  }, [instanceId, contentKind])
 
   useEffect(() => {
     void refreshInstalled()
   }, [refreshInstalled])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.spire.listContentCategories(contentKind).then((list) => {
+      if (!cancelled) setCategories(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [contentKind])
+
+  useEffect(() => {
+    if (kindOnlyCurseForge && source !== 'curseforge') setSource('curseforge')
+  }, [kindOnlyCurseForge, source])
+
+  useEffect(() => {
+    setCategoryId(null)
+  }, [contentKind])
 
   useEffect(() => {
     void window.spire.getDownloadWatchStatus().then(setWatchStatus)
@@ -151,7 +216,9 @@ export default function ModsBrowser({
           query: nextQuery,
           sort: snap.sort,
           offset,
-          limit: PAGE_SIZE
+          limit: PAGE_SIZE,
+          kind: snap.kind,
+          categoryId: snap.categoryId
         })
         const nextHasMore =
           result.mods.length === 0
@@ -171,8 +238,14 @@ export default function ModsBrowser({
         if (mode === 'replace' && result.notice && result.mods.length === 0 && nextQuery.trim()) {
           const browse =
             snap.source === 'curseforge'
-              ? `https://www.curseforge.com/hytale/mods?search=${encodeURIComponent(nextQuery.trim())}`
-              : 'https://www.nexusmods.com/hytale/mods/'
+              ? `https://www.curseforge.com/hytale/${snap.kind === 'mods' ? 'mods' : snap.kind}?search=${encodeURIComponent(nextQuery.trim())}`
+              : snap.source === 'modtale'
+                ? `https://modtale.net/?search=${encodeURIComponent(nextQuery.trim())}`
+                : snap.source === 'modifold'
+                  ? `https://modifold.com/mods?search=${encodeURIComponent(nextQuery.trim())}`
+                  : snap.source === 'thunderstore'
+                    ? 'https://thunderstore.io/c/hytale/'
+                    : 'https://www.nexusmods.com/hytale/mods/'
           void window.spire.openExternal(browse)
         }
       } catch (err) {
@@ -204,7 +277,7 @@ export default function ModsBrowser({
     stateRef.current.resultsLength = 0
     stateRef.current.hasMore = false
     void runSearch('', 'replace')
-  }, [source, runSearch, view])
+  }, [source, runSearch, view, contentKind, categoryId])
 
   useEffect(() => {
     if (view !== 'download') return
@@ -289,7 +362,8 @@ export default function ModsBrowser({
         mod.id,
         fileId || undefined,
         mode,
-        mod.name
+        mod.name,
+        contentKind
       )
       onToast(result.message)
       if (result.needsManualDownload || result.needsManualNxm) {
@@ -330,6 +404,11 @@ export default function ModsBrowser({
   const listing = details?.listing ?? selected
   const isCurseForge = source === 'curseforge'
   const isNexus = source === 'nexus'
+  const isDirectInstall =
+    source === 'curseforge' ||
+    source === 'modtale' ||
+    source === 'modifold' ||
+    source === 'thunderstore'
   const quickAvailable =
     details?.quickDownloadAvailable ?? (isNexus ? false : !isCurseForge)
   const enabledCount = installed.filter((m) => m.enabled !== false).length
@@ -339,17 +418,22 @@ export default function ModsBrowser({
       <div className="mods mods-manage">
         <div className="mods-manage-header">
           <div>
-            <h1 className="page-title">Mods</h1>
+            <h1 className="page-title">{kindLabel(contentKind)}</h1>
             <p className="page-sub">
               {installed.length === 0
-                ? `No mods on ${instanceName} yet.`
+                ? `No ${kindLabel(contentKind).toLowerCase()} on ${instanceName} yet.`
                 : `${enabledCount} active · ${installed.length} installed on ${instanceName}`}
+            </p>
+            <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
+              {kindInstallHint(contentKind)}
             </p>
           </div>
           <div className="mods-manage-actions">
-            <button className="btn" type="button" onClick={() => void onImportFile()}>
-              Import file
-            </button>
+            {contentKind === 'mods' ? (
+              <button className="btn" type="button" onClick={() => void onImportFile()}>
+                Import file
+              </button>
+            ) : null}
             <button
               className="btn btn-primary"
               type="button"
@@ -375,9 +459,9 @@ export default function ModsBrowser({
 
         {installed.length === 0 ? (
           <div className="empty-state mods-empty">
-            <p>Install mods from CurseForge or Nexus, or import a local file.</p>
+            <p>Browse CurseForge {kindLabel(contentKind).toLowerCase()} and install into this instance.</p>
             <button className="btn btn-primary" type="button" onClick={() => setView('download')}>
-              Download mods
+              Download {kindLabel(contentKind).toLowerCase()}
             </button>
           </div>
         ) : (
@@ -416,14 +500,18 @@ export default function ModsBrowser({
                     </span>
                   </div>
                   <div className="manage-row-actions">
-                    <label className="check-inline">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() => void onToggleEnabled(mod)}
-                      />
-                      Active
-                    </label>
+                    {contentKind === 'mods' ||
+                    contentKind === 'bootstrap' ||
+                    contentKind === 'translations' ? (
+                      <label className="check-inline">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => void onToggleEnabled(mod)}
+                        />
+                        Active
+                      </label>
+                    ) : null}
                     <button
                       className="btn btn-danger"
                       type="button"
@@ -458,20 +546,26 @@ export default function ModsBrowser({
           ← Installed
         </button>
         <div className="source-tabs" role="tablist">
-          <button
-            type="button"
-            className={`source-tab${source === 'curseforge' ? ' active' : ''}`}
-            onClick={() => setSource('curseforge')}
-          >
-            CurseForge
-          </button>
-          <button
-            type="button"
-            className={`source-tab${source === 'nexus' ? ' active' : ''}`}
-            onClick={() => setSource('nexus')}
-          >
-            Nexus
-          </button>
+          {(
+            kindOnlyCurseForge
+              ? ([['curseforge', 'CurseForge']] as const)
+              : ([
+                  ['curseforge', 'CurseForge'],
+                  ['nexus', 'Nexus'],
+                  ['modtale', 'Modtale'],
+                  ['modifold', 'Modifold'],
+                  ['thunderstore', 'Thunderstore']
+                ] as const)
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`source-tab${source === id ? ' active' : ''}`}
+              onClick={() => setSource(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <form
           className="mods-search-inline"
@@ -483,8 +577,27 @@ export default function ModsBrowser({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search mods…"
+            placeholder={`Search ${kindLabel(contentKind).toLowerCase()}…`}
           />
+          {source === 'curseforge' && categories.length > 0 ? (
+            <select
+              className="mods-sort"
+              value={categoryId ?? ''}
+              onChange={(e) => {
+                const next = e.target.value ? Number(e.target.value) : null
+                setCategoryId(next)
+                stateRef.current.categoryId = next
+              }}
+              aria-label="Filter category"
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <select
             className="mods-sort"
             value={sort}
@@ -494,7 +607,7 @@ export default function ModsBrowser({
               stateRef.current.sort = next
               void runSearch(query, 'replace')
             }}
-            aria-label="Sort mods"
+            aria-label="Sort"
           >
             <option value="downloads">Downloads</option>
             <option value="updated">Updated</option>
@@ -541,6 +654,20 @@ export default function ModsBrowser({
         <p className="mods-notice">
           CurseForge installs download straight into this instance (no browser). Pick a mod, choose a
           version, then Install.
+        </p>
+      ) : null}
+
+      {source === 'modtale' || source === 'modifold' ? (
+        <p className="mods-notice">
+          Community catalog — installs download straight into this instance. Pick a version, then
+          Install.
+        </p>
+      ) : null}
+
+      {source === 'thunderstore' ? (
+        <p className="mods-notice">
+          Thunderstore packages are zip archives. Spire extracts the .jar into your mods folder on
+          Install.
         </p>
       ) : null}
 
@@ -706,15 +833,15 @@ export default function ModsBrowser({
                   </label>
                 ) : (
                   <p className="muted" style={{ marginTop: 4 }}>
-                    {isCurseForge
-                      ? 'Loading versions… If this stays empty, check your CurseForge API key.'
+                    {isDirectInstall
+                      ? 'Loading versions… If this stays empty, the project may have no published files yet.'
                       : 'Version list needs an API key when available; Download opens the site Files page.'}
                   </p>
                 )}
 
                 <h3 className="mod-detail-section">Download</h3>
                 <div className="mod-detail-actions">
-                  {isCurseForge ? (
+                  {isDirectInstall ? (
                     <button
                       className="btn btn-primary"
                       type="button"

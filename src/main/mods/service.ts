@@ -1,6 +1,8 @@
 import { copyFileSync } from 'fs'
 import { basename, join } from 'path'
 import type {
+  ContentCategory,
+  ContentKind,
   ModDetails,
   ModFileInfo,
   ModInstallMode,
@@ -13,16 +15,39 @@ import type {
 import { getInstance } from '../instances'
 import { resolveCurseForgeKey, resolveNexusKey } from '../settings'
 import {
-  CURSEFORGE_HYTALE_BROWSE_URL,
+  getModifoldDetails,
+  getModifoldDownloadUrl,
+  listModifoldVersions,
+  searchModifold
+} from './modifold'
+import {
+  getModtaleDetails,
+  getModtaleDownloadUrl,
+  listModtaleVersions,
+  searchModtale
+} from './modtale'
+import {
+  getThunderstoreDetails,
+  installThunderstorePackage,
+  listThunderstoreVersions,
+  searchThunderstore
+} from './thunderstore'
+import {
+  MODIFOLD_BROWSE_URL,
+  MODTALE_BROWSE_URL,
   NEXUS_GAME_DOMAIN,
-  NEXUS_HYTALE_BROWSE_URL
+  NEXUS_HYTALE_BROWSE_URL,
+  THUNDERSTORE_HYTALE_BROWSE_URL
 } from './constants'
+import { curseForgeBrowseUrl, normalizeContentKind } from './contentKinds'
+import { installDownloadedContent } from './installContent'
 import {
   curseForgeFilesPageUrl,
   getCurseForgeDetails,
   getCurseForgeDownloadUrl,
   getCurseForgeMod,
   keylessCurseForgeSearch,
+  listCurseForgeCategories,
   listCurseForgeFiles,
   searchCurseForge
 } from './curseforge'
@@ -89,15 +114,47 @@ export async function searchMods(
   source: ModSource,
   options: ModSearchOptions = {}
 ): Promise<ModSearchResult> {
+  const kind = normalizeContentKind(options.kind)
+  const scoped: ModSearchOptions = { ...options, kind }
+
+  // Non-mod content is CurseForge-class based today.
+  if (kind !== 'mods' && source !== 'curseforge') {
+    return {
+      mods: [],
+      total: 0,
+      hasMore: false,
+      notice: `${kind} browsing is available on CurseForge. Switch to the CurseForge tab.`
+    }
+  }
+
   if (source === 'curseforge') {
     const key = resolveCurseForgeKey()
-    if (!key) return keylessCurseForgeSearch(options)
-    return searchCurseForge(key, options)
+    if (!key) return keylessCurseForgeSearch(scoped)
+    return searchCurseForge(key, scoped)
   }
   if (source === 'modrinth') {
     return searchModrinth(options)
   }
+  if (source === 'modtale') {
+    return searchModtale(options)
+  }
+  if (source === 'modifold') {
+    return searchModifold(options)
+  }
+  if (source === 'thunderstore') {
+    return searchThunderstore(options)
+  }
   return searchNexus(resolveNexusKey(), options)
+}
+
+export async function listContentCategories(kind: ContentKind): Promise<ContentCategory[]> {
+  const key = resolveCurseForgeKey()
+  if (!key) return []
+  try {
+    return await listCurseForgeCategories(key, normalizeContentKind(kind))
+  } catch {
+    return []
+  }
 }
 
 export async function getModDetails(source: ModSource, modId: string): Promise<ModDetails> {
@@ -134,6 +191,15 @@ export async function getModDetails(source: ModSource, modId: string): Promise<M
   if (source === 'modrinth') {
     return getModrinthDetails(modId)
   }
+  if (source === 'modtale') {
+    return getModtaleDetails(modId)
+  }
+  if (source === 'modifold') {
+    return getModifoldDetails(modId)
+  }
+  if (source === 'thunderstore') {
+    return getThunderstoreDetails(modId)
+  }
   return getNexusDetails(modId, resolveNexusKey())
 }
 
@@ -146,6 +212,15 @@ export async function getModFiles(source: ModSource, modId: string): Promise<Mod
   if (source === 'modrinth') {
     return listModrinthVersions(modId)
   }
+  if (source === 'modtale') {
+    return listModtaleVersions(modId)
+  }
+  if (source === 'modifold') {
+    return listModifoldVersions(modId)
+  }
+  if (source === 'thunderstore') {
+    return listThunderstoreVersions(modId)
+  }
   const key = resolveNexusKey()
   if (!key) return []
   return listNexusFiles(Number(modId), key)
@@ -157,18 +232,35 @@ export async function installMod(
   modId: string,
   fileId?: string,
   mode: ModInstallMode = 'slow',
-  modName?: string
+  modName?: string,
+  kind: ContentKind = 'mods'
 ): Promise<ModInstallResult> {
   if (!getInstance(instanceId)) {
     return { ok: false, message: 'Instance not found.' }
   }
+  const contentKind = normalizeContentKind(kind)
 
   try {
     if (source === 'curseforge') {
-      return await installFromCurseForge(instanceId, modId, fileId, mode, modName)
+      return await installFromCurseForge(instanceId, modId, fileId, mode, modName, contentKind)
+    }
+    if (contentKind !== 'mods') {
+      return {
+        ok: false,
+        message: `${contentKind} installs from ${source} aren’t supported yet — use CurseForge.`
+      }
     }
     if (source === 'modrinth') {
       return await installFromModrinth(instanceId, modId, fileId)
+    }
+    if (source === 'modtale') {
+      return await installFromModtale(instanceId, modId, fileId)
+    }
+    if (source === 'modifold') {
+      return await installFromModifold(instanceId, modId, fileId)
+    }
+    if (source === 'thunderstore') {
+      return await installFromThunderstore(instanceId, modId, fileId)
     }
     return await installFromNexus(instanceId, modId, fileId, mode, modName)
   } catch (err) {
@@ -184,9 +276,11 @@ async function installFromCurseForge(
   modId: string,
   fileId: string | undefined,
   _mode: ModInstallMode,
-  modName?: string
+  modName?: string,
+  kind: ContentKind = 'mods'
 ): Promise<ModInstallResult> {
   const apiKey = resolveCurseForgeKey()
+  const contentKind = normalizeContentKind(kind)
 
   let listing: ModListing
   if (apiKey) {
@@ -201,7 +295,7 @@ async function installFromCurseForge(
       author: 'Unknown',
       downloads: 0,
       logoUrl: null,
-      pageUrl: `https://www.curseforge.com/hytale/mods/${modId}`,
+      pageUrl: curseForgeBrowseUrl(contentKind),
       updatedAt: null
     }
   }
@@ -212,7 +306,7 @@ async function installFromCurseForge(
   if (!apiKey) {
     beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
     return manualResult(
-      'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CurseForge API key for one-click in-app install.',
+      `Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CurseForge API key for one-click in-app install.`,
       filesPage,
       true
     )
@@ -243,22 +337,26 @@ async function installFromCurseForge(
     }
   }
 
-  await downloadToModsFolder(instanceId, url, file.fileName, {
-    'x-api-key': apiKey
-  })
-
-  const installed = upsertInstalledMod(instanceId, {
+  const installed = await installDownloadedContent({
+    instanceId,
+    kind: contentKind,
     source: 'curseforge',
     modId,
     fileId: file.fileId,
     name: listing.name,
-    fileName: file.fileName.replace(/[\\/:*?"<>|]/g, '_'),
-    installedAt: new Date().toISOString(),
     pageUrl: listing.pageUrl,
-    enabled: true
+    url,
+    fileName: file.fileName,
+    headers: { 'x-api-key': apiKey }
   })
 
-  return { ok: true, message: `Installed “${listing.name}”`, installed }
+  const where =
+    contentKind === 'worlds'
+      ? 'worlds/'
+      : contentKind === 'prefabs'
+        ? 'prefabs/'
+        : 'mods/'
+  return { ok: true, message: `Installed “${listing.name}” into ${where}`, installed }
 }
 
 async function installFromModrinth(
@@ -288,6 +386,78 @@ async function installFromModrinth(
     pageUrl: details.listing.pageUrl
   })
   return { ok: true, message: `Installed “${details.listing.name}”`, installed }
+}
+
+async function installFromModtale(
+  instanceId: string,
+  modId: string,
+  fileId?: string
+): Promise<ModInstallResult> {
+  const details = await getModtaleDetails(modId)
+  const version =
+    fileId ||
+    details.versions.find((v) => v.primary)?.fileId ||
+    details.versions[0]?.fileId
+  if (!version) {
+    beginWatchAfterBrowser(instanceId, 'modtale', modId, details.listing.name)
+    return manualResult(
+      'No Modtale versions found — opened the project page.',
+      details.listing.pageUrl,
+      true
+    )
+  }
+  const { url, fileName } = await getModtaleDownloadUrl(modId, version)
+  await downloadToModsFolder(instanceId, url, fileName)
+  const installed = upsertInstalledMod(instanceId, {
+    source: 'modtale',
+    modId,
+    fileId: version,
+    name: details.listing.name,
+    fileName: fileName.replace(/[\\/:*?"<>|]/g, '_'),
+    installedAt: new Date().toISOString(),
+    pageUrl: details.listing.pageUrl,
+    enabled: true
+  })
+  return { ok: true, message: `Installed “${details.listing.name}”`, installed }
+}
+
+async function installFromModifold(
+  instanceId: string,
+  modId: string,
+  fileId?: string
+): Promise<ModInstallResult> {
+  const dl = await getModifoldDownloadUrl(modId, fileId)
+  await downloadToModsFolder(instanceId, dl.url, dl.fileName)
+  const installed = upsertInstalledMod(instanceId, {
+    source: 'modifold',
+    modId,
+    fileId: dl.fileId,
+    name: dl.name,
+    fileName: dl.fileName.replace(/[\\/:*?"<>|]/g, '_'),
+    installedAt: new Date().toISOString(),
+    pageUrl: dl.pageUrl,
+    enabled: true
+  })
+  return { ok: true, message: `Installed “${dl.name}”`, installed }
+}
+
+async function installFromThunderstore(
+  instanceId: string,
+  modId: string,
+  fileId?: string
+): Promise<ModInstallResult> {
+  const result = await installThunderstorePackage(instanceId, modId, fileId)
+  const installed = upsertInstalledMod(instanceId, {
+    source: 'thunderstore',
+    modId,
+    fileId: result.fileId,
+    name: result.listing.name,
+    fileName: result.fileName,
+    installedAt: new Date().toISOString(),
+    pageUrl: result.listing.pageUrl,
+    enabled: true
+  })
+  return { ok: true, message: `Installed “${result.listing.name}”`, installed }
 }
 
 async function installFromNexus(
@@ -460,15 +630,23 @@ export async function importLocalModFile(
   }
 }
 
-export function browseFallbackUrl(source: ModSource, query?: string): string {
+export function browseFallbackUrl(source: ModSource, query?: string, kind?: ContentKind): string {
   if (source === 'curseforge') {
-    const q = query?.trim()
-    return q
-      ? `${CURSEFORGE_HYTALE_BROWSE_URL}?search=${encodeURIComponent(q)}`
-      : CURSEFORGE_HYTALE_BROWSE_URL
+    return curseForgeBrowseUrl(normalizeContentKind(kind), query)
   }
   if (source === 'nexus') {
     return NEXUS_HYTALE_BROWSE_URL
+  }
+  if (source === 'modtale') {
+    const q = query?.trim()
+    return q ? `${MODTALE_BROWSE_URL}/?search=${encodeURIComponent(q)}` : MODTALE_BROWSE_URL
+  }
+  if (source === 'modifold') {
+    const q = query?.trim()
+    return q ? `${MODIFOLD_BROWSE_URL}/mods?search=${encodeURIComponent(q)}` : `${MODIFOLD_BROWSE_URL}/mods`
+  }
+  if (source === 'thunderstore') {
+    return THUNDERSTORE_HYTALE_BROWSE_URL
   }
   return 'https://modrinth.com/mods'
 }

@@ -1,6 +1,15 @@
 export type Platform = 'darwin' | 'win32' | 'linux' | string
 
-export type ModSource = 'curseforge' | 'nexus' | 'modrinth'
+export type ModSource =
+  | 'curseforge'
+  | 'nexus'
+  | 'modrinth'
+  | 'modtale'
+  | 'modifold'
+  | 'thunderstore'
+
+/** CurseForge Hytale project classes — also Spire install targets. */
+export type ContentKind = 'mods' | 'prefabs' | 'worlds' | 'bootstrap' | 'translations'
 
 export type ModSort = 'downloads' | 'updated' | 'name' | 'relevance'
 
@@ -94,6 +103,17 @@ export interface ModSearchOptions {
   sort?: ModSort
   offset?: number
   limit?: number
+  /** CurseForge class / Spire content kind. Defaults to mods. */
+  kind?: ContentKind
+  /** Optional CurseForge category id within the class. */
+  categoryId?: number | null
+}
+
+export interface ContentCategory {
+  id: number
+  name: string
+  slug: string
+  kind: ContentKind
 }
 
 export interface ModFileInfo {
@@ -141,6 +161,8 @@ export interface InstalledMod {
   pageUrl: string
   /** When false, file lives under mods/disabled/ and is not loaded at launch. Default true. */
   enabled?: boolean
+  /** Content class this install belongs to. Defaults to mods. */
+  kind?: ContentKind
 }
 
 export interface ModSearchResult {
@@ -380,11 +402,13 @@ export interface SpireApi {
     modId: string,
     fileId?: string,
     mode?: ModInstallMode,
-    modName?: string
+    modName?: string,
+    kind?: ContentKind
   ) => Promise<ModInstallResult>
   installFromNxm: (instanceId: string, nxmUrl: string) => Promise<ModInstallResult>
   importLocalMod: (instanceId: string) => Promise<ModInstallResult | null>
   listInstalledMods: (instanceId: string) => Promise<InstalledMod[]>
+  listContentCategories: (kind: ContentKind) => Promise<ContentCategory[]>
   removeInstalledMod: (instanceId: string, source: ModSource, modId: string) => Promise<void>
   setModEnabled: (
     instanceId: string,
