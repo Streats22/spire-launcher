@@ -13,6 +13,19 @@ import {
 import { clearAllAccounts } from './auth/store'
 import { cancelLogin } from './auth/account'
 
+const THEME_IDS = new Set([
+  'slate',
+  'ember',
+  'ocean',
+  'mist',
+  'midnight',
+  'daybreak',
+  'fog',
+  'contrast'
+])
+const DENSITY_IDS = new Set(['compact', 'comfortable', 'readable'])
+const HOME_LAYOUT_IDS = new Set(['grid', 'list'])
+
 const defaultSettings = (): SpireSettings => ({
   gameInstallPath: null,
   activeInstanceId: null,
@@ -20,7 +33,9 @@ const defaultSettings = (): SpireSettings => ({
   nexusApiKey: null,
   checkForUpdates: true,
   showModPhotos: true,
-  theme: 'slate'
+  theme: 'slate',
+  density: 'comfortable',
+  homeLayout: 'grid'
 })
 
 export function ensureSpireDirs(): void {
@@ -39,8 +54,9 @@ export function loadSettings(): SpireSettings {
   }
   try {
     const raw = { ...defaultSettings(), ...JSON.parse(readFileSync(path, 'utf8')) } as SpireSettings
-    const themes = new Set(['slate', 'ember', 'ocean', 'mist', 'midnight'])
-    if (!themes.has(String(raw.theme))) raw.theme = 'slate'
+    if (!THEME_IDS.has(String(raw.theme))) raw.theme = 'slate'
+    if (!DENSITY_IDS.has(String(raw.density))) raw.density = 'comfortable'
+    if (!HOME_LAYOUT_IDS.has(String(raw.homeLayout))) raw.homeLayout = 'grid'
     return raw
   } catch {
     return defaultSettings()
