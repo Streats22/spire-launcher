@@ -41,6 +41,17 @@ npm run dist:win
 npm run dist:linux
 ```
 
+Packaged installers use branded chrome:
+
+- **macOS DMG** — custom Finder window (`resources/dmg-background.png`) with drag-to-Applications
+- **Windows NSIS** — assisted setup wizard with Spire sidebar/header art (not one-click), desktop + Start Menu shortcuts
+
+Regenerate installer graphics after icon/theme changes:
+
+```bash
+npm run generate:installer-assets
+```
+
 ## Mod stores
 
 | Source | Notes |
