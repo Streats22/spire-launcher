@@ -7,7 +7,7 @@ export function getPlatform(): Platform {
   return process.platform
 }
 
-/** Spire-owned data (instances, settings) — never stores game binaries */
+/** Spire-owned data (instances, settings, auth, downloaded packages). */
 export function getSpireRoot(): string {
   return join(app.getPath('appData'), 'Spire')
 }
@@ -20,31 +20,47 @@ export function getSettingsPath(): string {
   return join(getSpireRoot(), 'settings.json')
 }
 
+/** Official packages downloaded by Spire (Hypixel CDN only). */
+export function getGameRoot(): string {
+  return join(getSpireRoot(), 'game')
+}
+
 /**
- * Official Hytale layout (per community / HyPrism docs):
- *   {install}/install/release/package/game/latest/Client/HytaleClient.exe  (win)
- *   {install}/install/release/package/jre/latest/bin/java(.exe)
- *   {install}/UserData
+ * Official Hytale layout (official launcher / HyPrism):
+ *   {root}/install/{channel}/package/game/latest/Client/…
+ *   {root}/package/game/latest/Client/…          (Spire-managed channel root)
+ *   {root}/install/{channel}/package/jre/latest/bin/java
  */
 export function resolveClientPath(installRoot: string): string | null {
-  const candidates =
-    process.platform === 'win32'
-      ? [
-          join(installRoot, 'install', 'release', 'package', 'game', 'latest', 'Client', 'HytaleClient.exe'),
-          join(installRoot, 'Client', 'HytaleClient.exe'),
-          join(installRoot, 'HytaleClient.exe')
-        ]
-      : process.platform === 'darwin'
-        ? [
-            join(installRoot, 'install', 'release', 'package', 'game', 'latest', 'Client', 'HytaleClient.app'),
-            join(installRoot, 'HytaleClient.app'),
-            join(installRoot, 'Hytale.app')
-          ]
-        : [
-            join(installRoot, 'install', 'release', 'package', 'game', 'latest', 'Client', 'HytaleClient'),
-            join(installRoot, 'Client', 'HytaleClient'),
-            join(installRoot, 'HytaleClient')
-          ]
+  const win = process.platform === 'win32'
+  const mac = process.platform === 'darwin'
+  const clientName = win ? 'HytaleClient.exe' : mac ? 'HytaleClient.app' : 'HytaleClient'
+  const altMac = 'Hytale.app'
+
+  const gameLatestRoots = [
+    join(installRoot, 'package', 'game', 'latest'),
+    join(installRoot, 'install', 'release', 'package', 'game', 'latest'),
+    join(installRoot, 'install', 'pre-release', 'package', 'game', 'latest'),
+    join(installRoot, 'Client'),
+    installRoot
+  ]
+
+  const candidates: string[] = []
+  for (const root of gameLatestRoots) {
+    candidates.push(join(root, 'Client', clientName))
+    if (mac) {
+      candidates.push(join(root, 'Client', altMac))
+      candidates.push(join(root, 'Client', 'Hytale.app'))
+      candidates.push(
+        join(root, 'Client', 'Hytale.app', 'Contents', 'MacOS', 'HytaleClient')
+      )
+      candidates.push(
+        join(root, 'Client', 'HytaleClient.app', 'Contents', 'MacOS', 'HytaleClient')
+      )
+    }
+    candidates.push(join(root, clientName))
+    if (mac) candidates.push(join(root, altMac))
+  }
 
   return candidates.find((p) => existsSync(p)) ?? null
 }
@@ -52,7 +68,9 @@ export function resolveClientPath(installRoot: string): string | null {
 export function resolveJavaPath(installRoot: string): string | null {
   const bin = process.platform === 'win32' ? 'java.exe' : 'java'
   const candidates = [
+    join(installRoot, 'package', 'jre', 'latest', 'bin', bin),
     join(installRoot, 'install', 'release', 'package', 'jre', 'latest', 'bin', bin),
+    join(installRoot, 'install', 'pre-release', 'package', 'jre', 'latest', 'bin', bin),
     join(installRoot, 'jre', 'bin', bin)
   ]
   return candidates.find((p) => existsSync(p)) ?? null

@@ -9,9 +9,25 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { InstancePatch, SpireInstance } from '../shared/types'
+import type {
+  CreateInstanceOptions,
+  InstanceChannel,
+  InstancePatch,
+  SpireInstance
+} from '../shared/types'
 import { getInstancesRoot } from './paths'
 import { loadSettings, updateSettings } from './settings'
+
+function normalizeInstance(raw: SpireInstance): SpireInstance {
+  const channel: InstanceChannel =
+    raw.channel === 'pre-release' ? 'pre-release' : 'release'
+  return {
+    ...raw,
+    channel,
+    // Legacy profiles omit gameVersion — treat as unpinned.
+    gameVersion: raw.gameVersion ?? null
+  }
+}
 
 function instanceDir(id: string): string {
   return join(getInstancesRoot(), id)
@@ -53,7 +69,7 @@ export function listInstances(): SpireInstance[] {
       const path = metaPath(d.name)
       if (!existsSync(path)) return null
       try {
-        return JSON.parse(readFileSync(path, 'utf8')) as SpireInstance
+        return normalizeInstance(JSON.parse(readFileSync(path, 'utf8')) as SpireInstance)
       } catch {
         return null
       }
@@ -62,9 +78,19 @@ export function listInstances(): SpireInstance[] {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function createInstance(name: string): SpireInstance {
+export function createInstance(options: CreateInstanceOptions | string): SpireInstance {
   ensureInstancesRoot()
-  const trimmed = name.trim() || 'New profile'
+  const opts: CreateInstanceOptions =
+    typeof options === 'string' ? { name: options } : options
+  const trimmed = opts.name.trim() || 'New profile'
+  const channel: InstanceChannel =
+    opts.channel === 'pre-release' ? 'pre-release' : 'release'
+  const gameVersion =
+    opts.gameVersion === undefined
+      ? null
+      : opts.gameVersion?.trim()
+        ? opts.gameVersion.trim()
+        : null
   const id = randomUUID()
   const now = new Date().toISOString()
   const instance: SpireInstance = {
@@ -72,8 +98,9 @@ export function createInstance(name: string): SpireInstance {
     name: trimmed,
     createdAt: now,
     updatedAt: now,
-    notes: '',
-    channel: 'release'
+    notes: opts.notes?.trim() ?? '',
+    channel,
+    gameVersion
   }
   ensureInstanceLayout(id)
   writeMeta(instance)
@@ -94,6 +121,12 @@ export function updateInstance(id: string, patch: InstancePatch): SpireInstance 
     name: patch.name !== undefined ? patch.name.trim() || current.name : current.name,
     notes: patch.notes !== undefined ? patch.notes : current.notes,
     channel: patch.channel ?? current.channel,
+    gameVersion:
+      patch.gameVersion !== undefined
+        ? patch.gameVersion?.trim()
+          ? patch.gameVersion.trim()
+          : null
+        : (current.gameVersion ?? null),
     javaArgs: patch.javaArgs ?? current.javaArgs,
     updatedAt: new Date().toISOString()
   }
@@ -140,7 +173,7 @@ export function getInstance(id: string): SpireInstance | null {
   const path = metaPath(id)
   if (!existsSync(path)) return null
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as SpireInstance
+    return normalizeInstance(JSON.parse(readFileSync(path, 'utf8')) as SpireInstance)
   } catch {
     return null
   }

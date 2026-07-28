@@ -1,6 +1,20 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import {
+  cancelLogin,
+  getAuthStatus,
+  selectAccount,
+  selectProfile,
+  signOut,
+  signOutAll,
+  startLogin,
+  waitForLogin
+} from './auth/account'
+import { OFFICIAL_DOWNLOAD_PAGE } from './auth/constants'
+import { downloadAssetsZip, downloadChannel, getDownloadProgress, listChannels, listGameVersions, repairChannel } from './game/assets'
+import { getInstanceRuntimeStatus } from './instanceStatus'
 import {
   createInstance,
   deleteInstance,
@@ -10,6 +24,7 @@ import {
   updateInstance
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
+import { logError, readPersistedLogs } from './logging'
 import {
   getModDetails,
   getModFiles,
@@ -20,6 +35,10 @@ import {
   removeInstalledMod,
   searchMods
 } from './mods/service'
+import {
+  getDownloadWatchStatus,
+  stopDownloadWatch
+} from './mods/downloadWatch'
 import { getPlatform, getSpireRoot } from './paths'
 import {
   clearLocalCredentials,
@@ -36,7 +55,17 @@ import {
   renameWorld
 } from './worlds'
 import { deleteServer, listServers, upsertServer } from './servers'
+import {
+  focusMainView,
+  getMainWindow,
+  openLogsFolder,
+  openManageWindow,
+  openRunWindow,
+  setMainWindow
+} from './windows'
 import type {
+  CreateInstanceOptions,
+  HytalePatchline,
   InstancePatch,
   ModSearchOptions,
   ModSource,
@@ -44,11 +73,33 @@ import type {
   SpireSettings
 } from '../shared/types'
 
-let mainWindow: BrowserWindow | null = null
+// Must run before ready so macOS menu bar / About / process name pick up Spire
+// instead of the Electron binary name used in electron-vite `npm run dev`.
+app.setName('Spire')
+if (process.platform === 'darwin') {
+  app.setAboutPanelOptions({ applicationName: 'Spire' })
+}
+
+function resolveAppIconPath(): string {
+  const candidates = [
+    join(process.resourcesPath, 'icon.png'),
+    join(__dirname, '../../resources/icon.png'),
+    join(app.getAppPath(), 'resources/icon.png')
+  ]
+  return candidates.find((p) => existsSync(p)) ?? candidates[1]
+}
+
+function applyAppIcon(): string {
+  const iconPath = resolveAppIconPath()
+  if (process.platform === 'darwin' && app.dock && existsSync(iconPath)) {
+    app.dock.setIcon(nativeImage.createFromPath(iconPath))
+  }
+  return iconPath
+}
 
 function createWindow(): void {
-  const iconPath = join(__dirname, '../../resources/icon.png')
-  mainWindow = new BrowserWindow({
+  const iconPath = applyAppIcon()
+  const mainWindow = new BrowserWindow({
     width: 1180,
     height: 760,
     minWidth: 920,
@@ -65,13 +116,14 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+  setMainWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
+    mainWindow.show()
   })
 
   mainWindow.on('closed', () => {
-    mainWindow = null
+    setMainWindow(null)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -109,10 +161,23 @@ function registerIpc(): void {
   ipcMain.handle('spire:openSpireDataFolder', async () => {
     await shell.openPath(getSpireRoot())
   })
+  ipcMain.handle('spire:openLogsFolder', () => openLogsFolder())
+  ipcMain.handle('spire:getRecentLogs', (_e, limit?: number) => readPersistedLogs(limit ?? 200))
+  ipcMain.handle('spire:openManageWindow', (_e, instanceId: string) => {
+    openManageWindow(instanceId)
+  })
+  ipcMain.handle('spire:openRunWindow', (_e, instanceId: string) => {
+    openRunWindow(instanceId)
+  })
+  ipcMain.handle('spire:focusMainView', (_e, view: string) => {
+    focusMainView(view)
+  })
   ipcMain.handle('spire:clearLocalCredentials', () => clearLocalCredentials())
 
   ipcMain.handle('spire:listInstances', () => listInstances())
-  ipcMain.handle('spire:createInstance', (_e, name: string) => createInstance(name))
+  ipcMain.handle('spire:createInstance', (_e, options: CreateInstanceOptions | string) =>
+    createInstance(options)
+  )
   ipcMain.handle('spire:updateInstance', (_e, id: string, patch: InstancePatch) =>
     updateInstance(id, patch)
   )
@@ -141,9 +206,24 @@ function registerIpc(): void {
   )
   ipcMain.handle(
     'spire:installMod',
-    async (_e, instanceId: string, source: ModSource, modId: string, fileId?: string) => {
-      const result = await installMod(instanceId, source, modId, fileId)
-      if (result.needsManualNxm && result.pageUrl) {
+    async (
+      _e,
+      instanceId: string,
+      source: ModSource,
+      modId: string,
+      fileId?: string,
+      mode?: 'slow' | 'quick',
+      modName?: string
+    ) => {
+      const result = await installMod(
+        instanceId,
+        source,
+        modId,
+        fileId,
+        mode ?? 'slow',
+        modName
+      )
+      if ((result.needsManualDownload || result.needsManualNxm) && result.pageUrl) {
         await shell.openExternal(result.pageUrl)
       }
       return result
@@ -167,6 +247,10 @@ function registerIpc(): void {
   ipcMain.handle('spire:listInstalledMods', (_e, instanceId: string) =>
     listInstalledMods(instanceId)
   )
+  ipcMain.handle('spire:getDownloadWatchStatus', () => getDownloadWatchStatus())
+  ipcMain.handle('spire:stopDownloadWatch', () => {
+    stopDownloadWatch('Stopped watching Downloads.')
+  })
   ipcMain.handle(
     'spire:removeInstalledMod',
     (_e, instanceId: string, source: ModSource, modId: string) => {
@@ -206,9 +290,47 @@ function registerIpc(): void {
   ipcMain.handle('spire:openExternal', async (_e, url: string) => {
     await shell.openExternal(url)
   })
+
+  ipcMain.handle('spire:getHytaleAuthStatus', () => getAuthStatus())
+  ipcMain.handle('spire:startHytaleLogin', () => startLogin())
+  ipcMain.handle('spire:cancelHytaleLogin', () => {
+    cancelLogin()
+  })
+  ipcMain.handle('spire:waitHytaleLogin', () => waitForLogin())
+  ipcMain.handle('spire:signOutHytale', (_e, accountId?: string | null) => signOut(accountId))
+  ipcMain.handle('spire:signOutAllHytale', () => signOutAll())
+  ipcMain.handle('spire:selectHytaleAccount', (_e, accountId: string) => selectAccount(accountId))
+  ipcMain.handle('spire:selectHytaleProfile', (_e, uuid: string) => selectProfile(uuid))
+  ipcMain.handle('spire:listHytaleChannels', () => listChannels())
+  ipcMain.handle('spire:listGameVersions', (_e, channel: HytalePatchline) =>
+    listGameVersions(channel)
+  )
+  ipcMain.handle('spire:downloadHytaleChannel', async (_e, channel: HytalePatchline) => {
+    const result = await downloadChannel(channel)
+    if (!result.ok) logError('download', result.message)
+    return result
+  })
+  ipcMain.handle('spire:repairHytaleChannel', async (_e, channel: HytalePatchline) => {
+    const result = await repairChannel(channel)
+    if (!result.ok) logError('download', result.message)
+    return result
+  })
+  ipcMain.handle('spire:downloadHytaleAssetsZip', async (_e, channel: HytalePatchline) => {
+    const result = await downloadAssetsZip(channel)
+    if (!result.ok) logError('download', result.message)
+    return result
+  })
+  ipcMain.handle('spire:getInstanceRuntimeStatus', (_e, instanceId: string) =>
+    getInstanceRuntimeStatus(instanceId)
+  )
+  ipcMain.handle('spire:getHytaleDownloadProgress', () => getDownloadProgress())
+  ipcMain.handle('spire:openOfficialHytaleDownload', async () => {
+    await shell.openExternal(OFFICIAL_DOWNLOAD_PAGE)
+  })
 }
 
 function emitNxm(url: string): void {
+  const mainWindow = getMainWindow()
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.webContents.send('spire:nxm', url)
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -237,6 +359,7 @@ if (!gotLock) {
   app.on('second-instance', (_event, argv) => {
     const nxm = argv.find((a) => typeof a === 'string' && a.startsWith('nxm://'))
     if (nxm) emitNxm(nxm)
+    const mainWindow = getMainWindow()
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()

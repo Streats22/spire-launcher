@@ -1,12 +1,14 @@
 import type {
   ModDetails,
   ModFileInfo,
+  ModImage,
   ModListing,
   ModSearchOptions,
   ModSearchResult
 } from '../../shared/types'
 import {
   CURSEFORGE_API_BASE,
+  CURSEFORGE_HYTALE_BROWSE_URL,
   CURSEFORGE_HYTALE_GAME_ID,
   SPIRE_USER_AGENT
 } from './constants'
@@ -35,6 +37,14 @@ async function cfFetch<T>(apiKey: string, path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+interface CfScreenshot {
+  id?: number
+  title?: string
+  description?: string
+  thumbnailUrl?: string
+  url?: string
+}
+
 interface CfMod {
   id: number
   name: string
@@ -47,6 +57,7 @@ interface CfMod {
   logo?: { thumbnailUrl?: string; url?: string } | null
   links?: { websiteUrl?: string }
   categories?: { name: string }[]
+  screenshots?: CfScreenshot[]
   latestFilesIndexes?: { fileId: number; filename: string }[]
 }
 
@@ -79,17 +90,36 @@ function mapMod(mod: CfMod): ModListing {
   }
 }
 
+function mapImages(mod: CfMod): ModImage[] {
+  const shots = (mod.screenshots ?? [])
+    .map((s) => ({
+      url: s.url || s.thumbnailUrl || '',
+      thumbnailUrl: s.thumbnailUrl ?? s.url ?? null,
+      title: s.title ?? s.description ?? null
+    }))
+    .filter((s) => s.url)
+  if (shots.length) return shots
+  const logo = mod.logo?.url || mod.logo?.thumbnailUrl
+  return logo ? [{ url: logo, thumbnailUrl: mod.logo?.thumbnailUrl ?? logo, title: 'Logo' }] : []
+}
+
 function sortField(sort: ModSearchOptions['sort']): string {
   switch (sort) {
     case 'downloads':
-      return '6' // TotalDownloads
+      return '6'
     case 'updated':
-      return '3' // LastUpdated
+      return '3'
     case 'name':
-      return '4' // Name
+      return '4'
     default:
-      return '2' // Popularity / relevance stand-in
+      return '2'
   }
+}
+
+export function curseForgeFilesPageUrl(listing: ModListing, fileId?: string): string {
+  const base = listing.pageUrl || `${CURSEFORGE_HYTALE_BROWSE_URL}/${listing.slug}`
+  if (fileId) return `${base}/files/${fileId}`
+  return `${base}/files`
 }
 
 export async function searchCurseForge(
@@ -117,11 +147,20 @@ export async function searchCurseForge(
   }
 }
 
+/** Keyless fallback: point the user at the public catalog (no scraping). */
+export function keylessCurseForgeSearch(options: ModSearchOptions = {}): ModSearchResult {
+  const q = options.query?.trim()
+  return {
+    mods: [],
+    total: 0,
+    notice: q
+      ? `No embedded CurseForge key — opened search in your browser, or use Import file after downloading.`
+      : `No embedded CurseForge key — browse CurseForge in your browser, then Import file. Optional key in Settings enables in-app search & fast download.`
+  }
+}
+
 export async function listCurseForgeFiles(apiKey: string, modId: string): Promise<ModFileInfo[]> {
-  const json = await cfFetch<{ data: CfFile[] }>(
-    apiKey,
-    `/mods/${modId}/files?pageSize=50`
-  )
+  const json = await cfFetch<{ data: CfFile[] }>(apiKey, `/mods/${modId}/files?pageSize=50`)
   return (json.data ?? [])
     .filter((f) => f.isAvailable !== false)
     .map((f, index) => ({
@@ -136,7 +175,13 @@ export async function listCurseForgeFiles(apiKey: string, modId: string): Promis
       primary: index === 0,
       gameVersions: f.gameVersions,
       releaseType:
-        f.releaseType === 1 ? 'release' : f.releaseType === 2 ? 'beta' : f.releaseType === 3 ? 'alpha' : undefined
+        f.releaseType === 1
+          ? 'release'
+          : f.releaseType === 2
+            ? 'beta'
+            : f.releaseType === 3
+              ? 'alpha'
+              : undefined
     }))
 }
 
@@ -163,21 +208,24 @@ export async function getCurseForgeMod(apiKey: string, modId: string): Promise<M
 }
 
 export async function getCurseForgeDetails(apiKey: string, modId: string): Promise<ModDetails> {
-  const [listing, descJson, versions] = await Promise.all([
+  const [listing, descJson, versions, full] = await Promise.all([
     getCurseForgeMod(apiKey, modId),
     cfFetch<{ data: string }>(apiKey, `/mods/${modId}/description`).catch(() => ({
       data: ''
     })),
-    listCurseForgeFiles(apiKey, modId)
+    listCurseForgeFiles(apiKey, modId),
+    cfFetch<{ data: CfMod }>(apiKey, `/mods/${modId}`)
   ])
 
-  const full = await cfFetch<{ data: CfMod }>(apiKey, `/mods/${modId}`)
+  const hasQuick = versions.some((v) => Boolean(v.downloadUrl)) || versions.length > 0
 
   return {
     listing,
     description: descJson.data || listing.summary || '',
     categories: listing.categories ?? [],
     createdAt: full.data.dateCreated ?? null,
-    versions
+    versions,
+    images: mapImages(full.data),
+    quickDownloadAvailable: hasQuick
   }
 }

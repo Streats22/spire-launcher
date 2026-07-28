@@ -13,10 +13,17 @@ export type InstanceChannel = 'release' | 'pre-release'
 export interface SpireSettings {
   gameInstallPath: string | null
   activeInstanceId: string | null
+  /** Optional — Spire may ship an embedded CF key; users need not paste one. */
   curseForgeApiKey: string | null
+  /** Optional — browse/install can use browser Slow Download + nxm / Import. */
   nexusApiKey: string | null
   checkForUpdates: boolean
+  /** Persist gallery visibility on mod detail. Default true. */
+  showModPhotos: boolean
 }
+
+/** How to install from the mod detail panel. */
+export type ModInstallMode = 'slow' | 'quick'
 
 export interface SpireInstance {
   id: string
@@ -26,12 +33,25 @@ export interface SpireInstance {
   notes?: string
   javaArgs?: string[]
   channel: InstanceChannel
+  /**
+   * Official build id (e.g. `2026.01.24-6e2d4fc36`) when pinned.
+   * Null/undefined = use channel tip / Settings install path (legacy instances).
+   */
+  gameVersion?: string | null
+}
+
+export interface CreateInstanceOptions {
+  name: string
+  channel?: InstanceChannel
+  gameVersion?: string | null
+  notes?: string
 }
 
 export interface InstancePatch {
   name?: string
   notes?: string
   channel?: InstanceChannel
+  gameVersion?: string | null
   javaArgs?: string[]
 }
 
@@ -86,15 +106,25 @@ export interface ModFileInfo {
   releaseType?: string
 }
 
+export interface ModImage {
+  url: string
+  thumbnailUrl?: string | null
+  title?: string | null
+}
+
 export interface ModDetails {
   listing: ModListing
+  /** Author/HTML body when available; may fall back to summary. */
   description: string
   categories: string[]
   createdAt: string | null
   versions: ModFileInfo[]
+  images?: ModImage[]
   /** True when the store has no Hytale catalog (e.g. Modrinth today) */
   unavailableForHytale?: boolean
   notice?: string | null
+  /** Whether API one-click (“Download quickly”) is likely available. */
+  quickDownloadAvailable?: boolean
 }
 
 export interface InstalledMod {
@@ -117,8 +147,23 @@ export interface ModInstallResult {
   ok: boolean
   message: string
   installed?: InstalledMod
+  /** @deprecated Prefer needsManualDownload */
   needsManualNxm?: boolean
+  /** Opened (or should open) browser / nxm / Import — free-tier path. */
+  needsManualDownload?: boolean
   pageUrl?: string
+  /** Spire is watching ~/Downloads to auto-import the finished file. */
+  watchingDownloads?: boolean
+}
+
+export interface DownloadWatchStatus {
+  active: boolean
+  instanceId: string | null
+  source: ModSource | null
+  modId: string | null
+  modName: string | null
+  message: string
+  startedAt: number | null
 }
 
 export interface WorldEntry {
@@ -154,6 +199,141 @@ export interface LocalDataInfo {
   spireRoot: string
   instancesRoot: string
   settingsPath: string
+  /** Spire-managed official game packages (downloaded via Hypixel CDN). */
+  gameRoot: string
+}
+
+export type HytalePatchline = 'release' | 'pre-release'
+
+export interface HytaleDeviceLogin {
+  userCode: string
+  verificationUri: string
+  verificationUriComplete: string | null
+  expiresIn: number
+  interval: number
+}
+
+export interface HytaleProfile {
+  uuid: string
+  name: string
+  entitlements: string[]
+}
+
+/** One saved Hytale OAuth session (multiple can coexist locally). */
+export interface HytaleAccountSummary {
+  id: string
+  displayName: string | null
+  profileUuid: string | null
+  profiles: HytaleProfile[]
+  hasRefreshToken: boolean
+}
+
+export interface HytaleAuthStatus {
+  signedIn: boolean
+  /** Username / profile display when known (active account) */
+  displayName: string | null
+  profileUuid: string | null
+  profiles: HytaleProfile[]
+  /** Access token still usable (refreshed if needed) */
+  sessionValid: boolean
+  /** ISO expiry of access token if known */
+  accessExpiresAt: string | null
+  hasRefreshToken: boolean
+  clientId: string | null
+  /** Active saved account id */
+  activeAccountId: string | null
+  /** All locally saved Hytale accounts */
+  accounts: HytaleAccountSummary[]
+}
+
+export interface HytaleChannelInfo {
+  channel: HytalePatchline
+  version: string | null
+  downloadUrl: string | null
+  sha256: string | null
+  /** True when this channel is available to the signed-in account */
+  available: boolean
+  error: string | null
+  /** True when a playable Client is not yet present under Spire’s game folder */
+  clientPatchPending: boolean
+  /** Local Wharf build number when known */
+  installedBuild?: number | null
+  /** Client binary resolved under Spire-managed install */
+  clientReady?: boolean
+}
+
+/**
+ * Single selectable game build for instance wizards / Install UI.
+ * Official API only publishes the current build per channel; older entries
+ * appear when already downloaded into Spire’s local game folder.
+ */
+export interface GameVersionInfo {
+  channel: HytalePatchline
+  version: string
+  /** Present when Hypixel still serves this build via game-assets */
+  downloadUrl: string | null
+  sha256: string | null
+  /** True for the channel’s current remote tip */
+  latest: boolean
+  /** Already extracted under Spire’s game root */
+  installedLocally: boolean
+  localPath: string | null
+  /** Can start a CDN download (signed-in + remote URL known) */
+  downloadable: boolean
+  /** Playable Client present for this package */
+  clientReady?: boolean
+}
+
+export interface HytaleDownloadProgress {
+  phase: 'idle' | 'resolving' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error'
+  channel: HytalePatchline | null
+  version: string | null
+  bytesReceived: number
+  bytesTotal: number
+  message: string
+  /** Local install root after success */
+  installPath: string | null
+}
+
+export interface HytaleDownloadResult {
+  ok: boolean
+  message: string
+  channel?: HytalePatchline
+  version?: string
+  installPath?: string
+  /** Zip/patch finished but no client binary */
+  clientMissing?: boolean
+}
+
+/** Per-instance readiness for the Edit Instance surface. */
+export interface InstanceRuntimeStatus {
+  instanceId: string
+  channel: InstanceChannel
+  gameVersion: string | null
+  installRoot: string | null
+  clientReady: boolean
+  javaReady: boolean
+  build: number | null
+  installedVersion: string | null
+  modsCount: number
+  worldsCount: number
+  serversCount: number
+}
+
+export type SpireLogLevel = 'info' | 'warn' | 'error'
+
+export interface SpireLogEntry {
+  at: string
+  level: SpireLogLevel
+  source: string
+  message: string
+}
+
+export interface RunLogEvent {
+  instanceId: string
+  line: string
+  stream: 'stdout' | 'stderr' | 'system'
+  at: string
 }
 
 export interface SpireApi {
@@ -166,9 +346,14 @@ export interface SpireApi {
   getInstallStatus: () => Promise<InstallStatus>
   getLocalDataInfo: () => Promise<LocalDataInfo>
   openSpireDataFolder: () => Promise<void>
+  openLogsFolder: () => Promise<void>
+  getRecentLogs: (limit?: number) => Promise<SpireLogEntry[]>
+  openManageWindow: (instanceId: string) => Promise<void>
+  openRunWindow: (instanceId: string) => Promise<void>
+  focusMainView: (view: string) => Promise<void>
   clearLocalCredentials: () => Promise<SpireSettings>
   listInstances: () => Promise<SpireInstance[]>
-  createInstance: (name: string) => Promise<SpireInstance>
+  createInstance: (options: CreateInstanceOptions | string) => Promise<SpireInstance>
   updateInstance: (id: string, patch: InstancePatch) => Promise<SpireInstance>
   duplicateInstance: (id: string, newName?: string) => Promise<SpireInstance>
   deleteInstance: (id: string) => Promise<void>
@@ -185,12 +370,18 @@ export interface SpireApi {
     instanceId: string,
     source: ModSource,
     modId: string,
-    fileId?: string
+    fileId?: string,
+    mode?: ModInstallMode,
+    modName?: string
   ) => Promise<ModInstallResult>
   installFromNxm: (instanceId: string, nxmUrl: string) => Promise<ModInstallResult>
   importLocalMod: (instanceId: string) => Promise<ModInstallResult | null>
   listInstalledMods: (instanceId: string) => Promise<InstalledMod[]>
   removeInstalledMod: (instanceId: string, source: ModSource, modId: string) => Promise<void>
+  getDownloadWatchStatus: () => Promise<DownloadWatchStatus>
+  stopDownloadWatch: () => Promise<void>
+  onDownloadWatchStatus: (handler: (status: DownloadWatchStatus) => void) => () => void
+  onModAutoImported: (handler: (result: ModInstallResult) => void) => () => void
   listWorlds: (instanceId: string) => Promise<WorldEntry[]>
   createWorld: (instanceId: string, name: string) => Promise<WorldEntry>
   renameWorld: (instanceId: string, worldId: string, name: string) => Promise<WorldEntry>
@@ -205,6 +396,36 @@ export interface SpireApi {
   checkForUpdate: () => Promise<UpdateCheckResult>
   openExternal: (url: string) => Promise<void>
   onNxmReceived: (handler: (nxmUrl: string) => void) => () => void
+  /** Official Hytale account (OAuth device code → Hypixel hosts only). */
+  getHytaleAuthStatus: () => Promise<HytaleAuthStatus>
+  startHytaleLogin: () => Promise<HytaleDeviceLogin>
+  cancelHytaleLogin: () => Promise<void>
+  waitHytaleLogin: () => Promise<HytaleAuthStatus>
+  signOutHytale: (accountId?: string | null) => Promise<HytaleAuthStatus>
+  signOutAllHytale: () => Promise<HytaleAuthStatus>
+  selectHytaleAccount: (accountId: string) => Promise<HytaleAuthStatus>
+  selectHytaleProfile: (uuid: string) => Promise<HytaleAuthStatus>
+  listHytaleChannels: () => Promise<HytaleChannelInfo[]>
+  /**
+   * Versions for one channel (current official tip + any locally cached builds).
+   * Prefer this from Create Instance wizards — no public older-version catalog.
+   */
+  listGameVersions: (channel: HytalePatchline) => Promise<GameVersionInfo[]>
+  /** Full Wharf client + JRE install for a channel (preferred). */
+  downloadHytaleChannel: (channel: HytalePatchline) => Promise<HytaleDownloadResult>
+  /** Force re-install client patches from build 0. */
+  repairHytaleChannel: (channel: HytalePatchline) => Promise<HytaleDownloadResult>
+  /** Optional game-assets zip (server/assets) — not required for play. */
+  downloadHytaleAssetsZip: (channel: HytalePatchline) => Promise<HytaleDownloadResult>
+  getInstanceRuntimeStatus: (instanceId: string) => Promise<InstanceRuntimeStatus>
+  getHytaleDownloadProgress: () => Promise<HytaleDownloadProgress>
+  openOfficialHytaleDownload: () => Promise<void>
+  onHytaleDownloadProgress: (
+    handler: (progress: HytaleDownloadProgress) => void
+  ) => () => void
+  onLogLine: (handler: (entry: SpireLogEntry) => void) => () => void
+  onRunLog: (handler: (event: RunLogEvent) => void) => () => void
+  onNavigate: (handler: (view: string) => void) => () => void
 }
 
 declare global {

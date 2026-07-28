@@ -9,7 +9,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { WorldEntry } from '../../shared/types'
+import type { WorldEntry } from '../shared/types'
 import { ensureInstanceLayout, getInstancePath } from './instances'
 
 function worldsRoot(instanceId: string): string {

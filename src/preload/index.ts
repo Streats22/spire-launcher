@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  CreateInstanceOptions,
+  HytaleDownloadProgress,
+  HytalePatchline,
   InstancePatch,
   ModSearchOptions,
   ModSource,
@@ -19,9 +22,15 @@ const api: SpireApi = {
   getInstallStatus: () => ipcRenderer.invoke('spire:getInstallStatus'),
   getLocalDataInfo: () => ipcRenderer.invoke('spire:getLocalDataInfo'),
   openSpireDataFolder: () => ipcRenderer.invoke('spire:openSpireDataFolder'),
+  openLogsFolder: () => ipcRenderer.invoke('spire:openLogsFolder'),
+  getRecentLogs: (limit) => ipcRenderer.invoke('spire:getRecentLogs', limit),
+  openManageWindow: (instanceId) => ipcRenderer.invoke('spire:openManageWindow', instanceId),
+  openRunWindow: (instanceId) => ipcRenderer.invoke('spire:openRunWindow', instanceId),
+  focusMainView: (view) => ipcRenderer.invoke('spire:focusMainView', view),
   clearLocalCredentials: () => ipcRenderer.invoke('spire:clearLocalCredentials'),
   listInstances: () => ipcRenderer.invoke('spire:listInstances'),
-  createInstance: (name) => ipcRenderer.invoke('spire:createInstance', name),
+  createInstance: (options: CreateInstanceOptions | string) =>
+    ipcRenderer.invoke('spire:createInstance', options),
   updateInstance: (id, patch: InstancePatch) =>
     ipcRenderer.invoke('spire:updateInstance', id, patch),
   duplicateInstance: (id, newName) =>
@@ -34,14 +43,36 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:searchMods', source, options ?? {}),
   getModDetails: (source, modId) => ipcRenderer.invoke('spire:getModDetails', source, modId),
   getModFiles: (source, modId) => ipcRenderer.invoke('spire:getModFiles', source, modId),
-  installMod: (instanceId, source, modId, fileId) =>
-    ipcRenderer.invoke('spire:installMod', instanceId, source, modId, fileId),
+  installMod: (instanceId, source, modId, fileId, mode, modName) =>
+    ipcRenderer.invoke('spire:installMod', instanceId, source, modId, fileId, mode, modName),
   installFromNxm: (instanceId, nxmUrl) =>
     ipcRenderer.invoke('spire:installFromNxm', instanceId, nxmUrl),
   importLocalMod: (instanceId) => ipcRenderer.invoke('spire:importLocalMod', instanceId),
   listInstalledMods: (instanceId) => ipcRenderer.invoke('spire:listInstalledMods', instanceId),
   removeInstalledMod: (instanceId, source, modId) =>
     ipcRenderer.invoke('spire:removeInstalledMod', instanceId, source, modId),
+  getDownloadWatchStatus: () => ipcRenderer.invoke('spire:getDownloadWatchStatus'),
+  stopDownloadWatch: () => ipcRenderer.invoke('spire:stopDownloadWatch'),
+  onDownloadWatchStatus: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      status: import('../shared/types').DownloadWatchStatus
+    ): void => {
+      handler(status)
+    }
+    ipcRenderer.on('spire:downloadWatchStatus', listener)
+    return () => ipcRenderer.removeListener('spire:downloadWatchStatus', listener)
+  },
+  onModAutoImported: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      result: import('../shared/types').ModInstallResult
+    ): void => {
+      handler(result)
+    }
+    ipcRenderer.on('spire:modAutoImported', listener)
+    return () => ipcRenderer.removeListener('spire:modAutoImported', listener)
+  },
   listWorlds: (instanceId) => ipcRenderer.invoke('spire:listWorlds', instanceId),
   createWorld: (instanceId, name) => ipcRenderer.invoke('spire:createWorld', instanceId, name),
   renameWorld: (instanceId, worldId, name) =>
@@ -63,6 +94,64 @@ const api: SpireApi = {
     }
     ipcRenderer.on('spire:nxm', listener)
     return () => ipcRenderer.removeListener('spire:nxm', listener)
+  },
+  getHytaleAuthStatus: () => ipcRenderer.invoke('spire:getHytaleAuthStatus'),
+  startHytaleLogin: () => ipcRenderer.invoke('spire:startHytaleLogin'),
+  cancelHytaleLogin: () => ipcRenderer.invoke('spire:cancelHytaleLogin'),
+  waitHytaleLogin: () => ipcRenderer.invoke('spire:waitHytaleLogin'),
+  signOutHytale: (accountId) => ipcRenderer.invoke('spire:signOutHytale', accountId),
+  signOutAllHytale: () => ipcRenderer.invoke('spire:signOutAllHytale'),
+  selectHytaleAccount: (accountId) => ipcRenderer.invoke('spire:selectHytaleAccount', accountId),
+  selectHytaleProfile: (uuid) => ipcRenderer.invoke('spire:selectHytaleProfile', uuid),
+  listHytaleChannels: () => ipcRenderer.invoke('spire:listHytaleChannels'),
+  listGameVersions: (channel: HytalePatchline) =>
+    ipcRenderer.invoke('spire:listGameVersions', channel),
+  downloadHytaleChannel: (channel: HytalePatchline) =>
+    ipcRenderer.invoke('spire:downloadHytaleChannel', channel),
+  repairHytaleChannel: (channel: HytalePatchline) =>
+    ipcRenderer.invoke('spire:repairHytaleChannel', channel),
+  downloadHytaleAssetsZip: (channel: HytalePatchline) =>
+    ipcRenderer.invoke('spire:downloadHytaleAssetsZip', channel),
+  getInstanceRuntimeStatus: (instanceId) =>
+    ipcRenderer.invoke('spire:getInstanceRuntimeStatus', instanceId),
+  getHytaleDownloadProgress: () => ipcRenderer.invoke('spire:getHytaleDownloadProgress'),
+  openOfficialHytaleDownload: () => ipcRenderer.invoke('spire:openOfficialHytaleDownload'),
+  onHytaleDownloadProgress: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: HytaleDownloadProgress
+    ): void => {
+      handler(progress)
+    }
+    ipcRenderer.on('spire:hytaleDownloadProgress', listener)
+    return () => ipcRenderer.removeListener('spire:hytaleDownloadProgress', listener)
+  },
+  onLogLine: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      entry: import('../shared/types').SpireLogEntry
+    ): void => {
+      handler(entry)
+    }
+    ipcRenderer.on('spire:logLine', listener)
+    return () => ipcRenderer.removeListener('spire:logLine', listener)
+  },
+  onRunLog: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      event: import('../shared/types').RunLogEvent
+    ): void => {
+      handler(event)
+    }
+    ipcRenderer.on('spire:runLog', listener)
+    return () => ipcRenderer.removeListener('spire:runLog', listener)
+  },
+  onNavigate: (handler) => {
+    const listener = (_event: Electron.IpcRendererEvent, view: string): void => {
+      handler(view)
+    }
+    ipcRenderer.on('spire:navigate', listener)
+    return () => ipcRenderer.removeListener('spire:navigate', listener)
   }
 }
 

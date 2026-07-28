@@ -31,6 +31,8 @@ npm install
 npm run dev
 ```
 
+On macOS, `npm run dev` runs the stock Electron binary from `node_modules`, so the **Dock may still say “Electron”** even though the window title, menu name (`app.setName('Spire')`), and About panel use Spire. A packaged build (`npm run dist:mac`) produces `Spire.app` with the correct Dock / bundle name (`CFBundleName`).
+
 ## Package
 
 ```bash
@@ -43,10 +45,10 @@ npm run dist:linux
 
 | Source | Notes |
 | --- | --- |
-| **CurseForge** | Game ID `70216`. Needs an API key from [console.curseforge.com](https://console.curseforge.com/). |
-| **Nexus Mods** | Domain `hytale`. Needs a personal API key. **Premium** required for one-click API downloads. |
+| **CurseForge** | Game ID `70216`. Keys are **optional**. Without a key: open Files in browser + Import file. With Spire embedded / env / Settings key: in-app search & **Download quickly**. |
+| **Nexus Mods** | Domain `hytale`. Keys are **optional**. Free path: **Download** → site Slow download / `nxm://` / Import. Optional **Premium** API key enables **Download quickly**. |
 
-Keys are saved locally only (or via `SPIRE_CURSEFORGE_API_KEY` / `SPIRE_NEXUS_API_KEY`).
+Keys (if any) stay local only (`SPIRE_CURSEFORGE_API_KEY` / `SPIRE_NEXUS_API_KEY` or Settings).
 
 ## Updates
 
@@ -58,6 +60,6 @@ Publish a new version by bumping `package.json` and updating [`updates/latest.js
 - [x] Local credentials (CurseForge / Nexus) — clearable, never uploaded
 - [x] Optional single-call update check
 - [x] CurseForge + Nexus Mods browse / install
+- [x] Nexus `nxm://` handler for free-account downloads
 - [ ] Confirm Hytale client isolation flags
-- [ ] Nexus `nxm://` handler for free-account downloads
 - [ ] Pack import-export (`.spirepack`)

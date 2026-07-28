@@ -1,5 +1,11 @@
-import type { ModDetails, ModFileInfo, ModListing, ModSearchResult } from '../../shared/types'
-import { NEXUS_API_BASE, NEXUS_GAME_DOMAIN, NEXUS_GRAPHQL, SPIRE_USER_AGENT } from './constants'
+import type {
+  ModDetails,
+  ModFileInfo,
+  ModImage,
+  ModListing,
+  ModSearchResult
+} from '../../shared/types'
+import { NEXUS_API_BASE, NEXUS_GAME_DOMAIN, NEXUS_GRAPHQL, NEXUS_HYTALE_BROWSE_URL, SPIRE_USER_AGENT } from './constants'
 
 export class NexusError extends Error {
   constructor(message: string) {
@@ -29,10 +35,8 @@ export function parseNxmLink(raw: string): ParsedNxmLink {
     throw new NexusError('Link must start with nxm://')
   }
 
-  // hostname is the game domain (hytale)
   const domain = url.hostname
   const parts = url.pathname.replace(/^\/+/, '').split('/')
-  // mods/{modId}/files/{fileId}
   if (parts[0] !== 'mods' || parts[2] !== 'files') {
     throw new NexusError('Unrecognized nxm link format.')
   }
@@ -49,17 +53,18 @@ export function parseNxmLink(raw: string): ParsedNxmLink {
   return { domain, modId, fileId, key, expires }
 }
 
-function nexusHeaders(apiKey: string): Record<string, string> {
-  return {
+function nexusHeaders(apiKey?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
     Accept: 'application/json',
-    apikey: apiKey,
     'Application-Name': 'Spire',
     'Application-Version': '0.1.0',
     'User-Agent': SPIRE_USER_AGENT
   }
+  if (apiKey?.trim()) headers.apikey = apiKey.trim()
+  return headers
 }
 
-async function nexusFetch<T>(apiKey: string, path: string): Promise<T> {
+async function nexusFetch<T>(path: string, apiKey?: string | null): Promise<T> {
   const res = await fetch(`${NEXUS_API_BASE}${path}`, {
     headers: nexusHeaders(apiKey)
   })
@@ -74,6 +79,7 @@ interface NexusMod {
   mod_id: number
   name: string
   summary?: string
+  description?: string
   picture_url?: string
   author?: string
   uploaded_by?: string
@@ -100,7 +106,7 @@ function mapMod(mod: NexusMod): ModListing {
     source: 'nexus',
     id: String(mod.mod_id),
     slug: String(mod.mod_id),
-    name: mod.name,
+    name: mod.name?.trim() || `Mod #${mod.mod_id}`,
     summary: mod.summary ?? '',
     author: mod.author || mod.uploaded_by || 'Unknown',
     downloads: Math.round(mod.mod_downloads ?? 0),
@@ -112,19 +118,54 @@ function mapMod(mod: NexusMod): ModListing {
   }
 }
 
+export function nexusFilesPageUrl(modId: string | number, fileId?: string): string {
+  const base = `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${modId}?tab=files`
+  return fileId ? `${base}&file_id=${fileId}` : base
+}
+
+export function nexusSlowDownloadHintUrl(modId: string | number, fileId?: string): string {
+  // Site free-tier path: Files tab → Slow download / Manual download
+  return nexusFilesPageUrl(modId, fileId)
+}
+
 export async function searchNexus(
-  apiKey: string,
+  apiKey: string | null | undefined,
   options: { query?: string; sort?: string } = {}
 ): Promise<ModSearchResult> {
   const trimmed = (options.query ?? '').trim()
+  const key = apiKey?.trim() || null
+
   if (trimmed && /^\d+$/.test(trimmed)) {
-    const mod = await getNexusMod(apiKey, Number(trimmed))
-    return { mods: [mod], total: 1 }
+    try {
+      const mod = await getNexusMod(Number(trimmed), key)
+      return { mods: [mod], total: 1 }
+    } catch {
+      return {
+        mods: [
+          {
+            source: 'nexus',
+            id: trimmed,
+            slug: trimmed,
+            name: `Mod #${trimmed}`,
+            summary: 'Open detail or use Download to open the Nexus page.',
+            author: 'Nexus',
+            downloads: 0,
+            logoUrl: null,
+            pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${trimmed}`,
+            updatedAt: null
+          }
+        ],
+        total: 1,
+        notice: key
+          ? null
+          : 'Showing mod by ID without API key — open detail or Download for Slow download.'
+      }
+    }
   }
 
   if (trimmed) {
     try {
-      const gql = await searchNexusGraphql(apiKey, trimmed)
+      const gql = await searchNexusGraphql(trimmed, key)
       if (gql.mods.length) {
         return { ...gql, mods: sortListings(gql.mods, options.sort) }
       }
@@ -133,48 +174,62 @@ export async function searchNexus(
     }
   }
 
-  const [trending, latest] = await Promise.all([
-    nexusFetch<NexusMod[]>(apiKey, `/games/${NEXUS_GAME_DOMAIN}/mods/trending.json`).catch(
-      () => [] as NexusMod[]
-    ),
-    nexusFetch<NexusMod[]>(apiKey, `/games/${NEXUS_GAME_DOMAIN}/mods/latest_updated.json`).catch(
-      () => [] as NexusMod[]
-    )
-  ])
+  if (key) {
+    const [trending, latest] = await Promise.all([
+      nexusFetch<NexusMod[]>(`/games/${NEXUS_GAME_DOMAIN}/mods/trending.json`, key).catch(
+        () => [] as NexusMod[]
+      ),
+      nexusFetch<NexusMod[]>(`/games/${NEXUS_GAME_DOMAIN}/mods/latest_updated.json`, key).catch(
+        () => [] as NexusMod[]
+      )
+    ])
 
-  const byId = new Map<number, NexusMod>()
-  for (const mod of [...trending, ...latest]) {
-    if (mod?.mod_id) byId.set(mod.mod_id, mod)
+    const byId = new Map<number, NexusMod>()
+    for (const mod of [...trending, ...latest]) {
+      if (mod?.mod_id) byId.set(mod.mod_id, mod)
+    }
+
+    let mods = [...byId.values()].map(mapMod)
+    if (trimmed) {
+      const q = trimmed.toLowerCase()
+      mods = mods.filter((m) => {
+        const name = (m.name ?? '').toLowerCase()
+        const summary = (m.summary ?? '').toLowerCase()
+        const author = (m.author ?? '').toLowerCase()
+        return name.includes(q) || summary.includes(q) || author.includes(q)
+      })
+    }
+
+    return { mods: sortListings(mods, options.sort), total: mods.length }
   }
 
-  let mods = [...byId.values()].map(mapMod)
-  if (trimmed) {
-    const q = trimmed.toLowerCase()
-    mods = mods.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.summary.toLowerCase().includes(q) ||
-        m.author.toLowerCase().includes(q)
-    )
+  // Keyless: GraphQL already tried; offer browse fallback notice
+  return {
+    mods: [],
+    total: 0,
+    notice: trimmed
+      ? `Couldn’t search Nexus without a key for “${trimmed}”. Open Nexus in your browser, use Slow download, then Import file — or paste nxm://. Optional Premium API key enables in-app browse & Download quickly.`
+      : `Browse Nexus without a key is limited. Open ${NEXUS_HYTALE_BROWSE_URL} or add an optional Premium API key in Settings for in-app search & fast downloads.`
   }
-
-  return { mods: sortListings(mods, options.sort), total: mods.length }
 }
 
 function sortListings(mods: ModListing[], sort?: string): ModListing[] {
   const copy = [...mods]
   switch (sort) {
     case 'name':
-      return copy.sort((a, b) => a.name.localeCompare(b.name))
+      return copy.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     case 'updated':
       return copy.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
     case 'downloads':
     default:
-      return copy.sort((a, b) => b.downloads - a.downloads)
+      return copy.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0))
   }
 }
 
-async function searchNexusGraphql(apiKey: string, term: string): Promise<ModSearchResult> {
+async function searchNexusGraphql(
+  term: string,
+  apiKey?: string | null
+): Promise<ModSearchResult> {
   const query = `
     query SearchHytaleMods($term: String!) {
       mods(
@@ -235,33 +290,41 @@ async function searchNexusGraphql(apiKey: string, term: string): Promise<ModSear
   const nodes = json.data?.mods?.nodes ?? []
   return {
     total: json.data?.mods?.totalCount ?? nodes.length,
-    mods: nodes.map((n) => ({
-      source: 'nexus' as const,
-      id: String(n.modId),
-      slug: String(n.modId),
-      name: n.name,
-      summary: n.summary ?? '',
-      author: n.uploader?.name ?? 'Unknown',
-      downloads: Math.round(n.downloads ?? 0),
-      logoUrl: n.pictureUrl ?? null,
-      pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${n.modId}`,
-      updatedAt: n.updatedAt ?? null
-    }))
+    mods: nodes
+      .filter((n) => n && n.modId != null)
+      .map((n) => ({
+        source: 'nexus' as const,
+        id: String(n.modId),
+        slug: String(n.modId),
+        name: n.name?.trim() || `Mod #${n.modId}`,
+        summary: n.summary ?? '',
+        author: n.uploader?.name ?? 'Unknown',
+        downloads: Math.round(n.downloads ?? 0),
+        logoUrl: n.pictureUrl ?? null,
+        pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${n.modId}`,
+        updatedAt: n.updatedAt ?? null
+      }))
   }
 }
 
-export async function getNexusMod(apiKey: string, modId: number): Promise<ModListing> {
+export async function getNexusMod(
+  modId: number,
+  apiKey?: string | null
+): Promise<ModListing> {
   const mod = await nexusFetch<NexusMod>(
-    apiKey,
-    `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}.json`
+    `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}.json`,
+    apiKey
   )
   return mapMod(mod)
 }
 
-export async function listNexusFiles(apiKey: string, modId: number): Promise<ModFileInfo[]> {
+export async function listNexusFiles(
+  modId: number,
+  apiKey?: string | null
+): Promise<ModFileInfo[]> {
   const json = await nexusFetch<{ files?: NexusFile[] }>(
-    apiKey,
-    `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}/files.json`
+    `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}/files.json`,
+    apiKey
   )
   const files = json.files ?? []
   return files.map((f) => ({
@@ -280,17 +343,18 @@ export async function listNexusFiles(apiKey: string, modId: number): Promise<Mod
 }
 
 export async function getNexusFileInfo(
-  apiKey: string,
   modId: number,
-  fileId: number
+  fileId: number,
+  apiKey?: string | null
 ): Promise<NexusFile | null> {
   try {
     return await nexusFetch<NexusFile>(
-      apiKey,
-      `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}/files/${fileId}.json`
+      `/games/${NEXUS_GAME_DOMAIN}/mods/${modId}/files/${fileId}.json`,
+      apiKey
     )
   } catch {
-    const files = await listNexusFiles(apiKey, modId)
+    if (!apiKey) return null
+    const files = await listNexusFiles(modId, apiKey)
     const match = files.find((f) => f.fileId === String(fileId))
     if (!match) return null
     return {
@@ -302,14 +366,13 @@ export async function getNexusFileInfo(
 }
 
 /**
- * Premium: call without key.
+ * Premium: call without nxm key → CDN links.
  * Free: pass key + expires from an nxm:// “Mod Manager Download” link.
  */
 export async function getNexusDownloadUrls(
-  apiKey: string,
   modId: number,
   fileId: number,
-  opts?: { key?: string; expires?: number; domain?: string }
+  opts?: { apiKey?: string | null; key?: string; expires?: number; domain?: string }
 ): Promise<string[]> {
   const domain = opts?.domain || NEXUS_GAME_DOMAIN
   const params = new URLSearchParams()
@@ -319,13 +382,13 @@ export async function getNexusDownloadUrls(
   const path = `/games/${domain}/mods/${modId}/files/${fileId}/download_link.json${qs ? `?${qs}` : ''}`
 
   try {
-    const json = await nexusFetch<{ URI: string }[]>(apiKey, path)
+    const json = await nexusFetch<{ URI: string }[]>(path, opts?.apiKey)
     return (json ?? []).map((x) => x.URI).filter(Boolean)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('403') || /premium/i.test(message)) {
       throw new NexusError(
-        'Nexus free accounts need a Mod Manager Download (nxm) link. Spire will open the Files tab — click “Mod Manager Download”, or paste the nxm:// link here.'
+        'Nexus free accounts need Slow download in the browser, or a Mod Manager (nxm) link. Optional Premium API key enables Download quickly.'
       )
     }
     throw err
@@ -334,18 +397,137 @@ export async function getNexusDownloadUrls(
 
 export function isPremiumRequiredError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
-  return /premium|nxm|mod manager download|403/i.test(message)
+  return /premium|nxm|mod manager download|403|slow download/i.test(message)
 }
 
+async function fetchNexusGraphqlDetails(
+  modId: number,
+  apiKey?: string | null
+): Promise<{ description: string; images: ModImage[] } | null> {
+  const query = `
+    query ModDetails($id: Int!) {
+      legacyMod(id: $id, domain: "${NEXUS_GAME_DOMAIN}") {
+        description
+        pictureUrl
+        gallery { imageUrl thumbnailUrl description }
+      }
+    }
+  `
+  try {
+    const res = await fetch(NEXUS_GRAPHQL, {
+      method: 'POST',
+      headers: {
+        ...nexusHeaders(apiKey),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { id: modId } })
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      data?: {
+        legacyMod?: {
+          description?: string
+          pictureUrl?: string
+          gallery?: { imageUrl?: string; thumbnailUrl?: string; description?: string }[]
+        }
+      }
+    }
+    const mod = json.data?.legacyMod
+    if (!mod) return null
+    const images: ModImage[] = (mod.gallery ?? [])
+      .map((g) => ({
+        url: g.imageUrl || g.thumbnailUrl || '',
+        thumbnailUrl: g.thumbnailUrl ?? g.imageUrl ?? null,
+        title: g.description ?? null
+      }))
+      .filter((i) => i.url)
+    if (!images.length && mod.pictureUrl) {
+      images.push({ url: mod.pictureUrl, thumbnailUrl: mod.pictureUrl, title: 'Cover' })
+    }
+    return { description: mod.description || '', images }
+  } catch {
+    return null
+  }
+}
 
-export async function getNexusDetails(apiKey: string, modId: string): Promise<ModDetails> {
-  const listing = await getNexusMod(apiKey, Number(modId))
-  const versions = await listNexusFiles(apiKey, Number(modId))
+export async function getNexusDetails(
+  modId: string,
+  apiKey?: string | null
+): Promise<ModDetails> {
+  const id = Number(modId)
+  const key = apiKey?.trim() || null
+
+  let listing: ModListing
+  let versions: ModFileInfo[] = []
+  let description = ''
+  let images: ModImage[] = []
+  let createdAt: string | null = null
+
+  try {
+    if (key) {
+      const mod = await nexusFetch<NexusMod>(
+        `/games/${NEXUS_GAME_DOMAIN}/mods/${id}.json`,
+        key
+      )
+      listing = mapMod(mod)
+      description = mod.description || mod.summary || ''
+      createdAt = mod.created_timestamp
+        ? new Date(mod.created_timestamp * 1000).toISOString()
+        : listing.updatedAt
+      if (mod.picture_url) {
+        images = [{ url: mod.picture_url, thumbnailUrl: mod.picture_url, title: 'Cover' }]
+      }
+      versions = await listNexusFiles(id, key).catch(() => [])
+    } else {
+      listing = {
+        source: 'nexus',
+        id: String(id),
+        slug: String(id),
+        name: `Mod #${id}`,
+        summary: '',
+        author: 'Unknown',
+        downloads: 0,
+        logoUrl: null,
+        pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${id}`,
+        updatedAt: null
+      }
+      try {
+        listing = await getNexusMod(id, null)
+        description = listing.summary
+        if (listing.logoUrl) {
+          images = [{ url: listing.logoUrl, thumbnailUrl: listing.logoUrl, title: 'Cover' }]
+        }
+      } catch {
+        // keep stub listing
+      }
+    }
+  } catch (err) {
+    throw err
+  }
+
+  const gql = await fetchNexusGraphqlDetails(id, key)
+  if (gql) {
+    if (gql.description) description = gql.description
+    if (gql.images.length) images = gql.images
+  }
+
+  if (!listing.name || listing.name.startsWith('Mod #')) {
+    // leave as-is; UI can still open browser
+  }
+
   return {
-    listing,
-    description: listing.summary || '',
+    listing: {
+      ...listing,
+      summary: listing.summary || description.slice(0, 200)
+    },
+    description: description || listing.summary || '',
     categories: [],
-    createdAt: listing.updatedAt,
-    versions
+    createdAt,
+    versions,
+    images,
+    quickDownloadAvailable: Boolean(key),
+    notice: key
+      ? null
+      : 'Free path: use Download (Slow download in browser / nxm / Import). Add a Premium API key in Settings for Download quickly.'
   }
 }

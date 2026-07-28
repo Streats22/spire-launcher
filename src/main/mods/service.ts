@@ -3,7 +3,9 @@ import { basename, join } from 'path'
 import type {
   ModDetails,
   ModFileInfo,
+  ModInstallMode,
   ModInstallResult,
+  ModListing,
   ModSearchOptions,
   ModSearchResult,
   ModSource
@@ -11,12 +13,20 @@ import type {
 import { getInstance } from '../instances'
 import { resolveCurseForgeKey, resolveNexusKey } from '../settings'
 import {
+  CURSEFORGE_HYTALE_BROWSE_URL,
+  NEXUS_GAME_DOMAIN,
+  NEXUS_HYTALE_BROWSE_URL
+} from './constants'
+import {
+  curseForgeFilesPageUrl,
   getCurseForgeDetails,
   getCurseForgeDownloadUrl,
   getCurseForgeMod,
+  keylessCurseForgeSearch,
   listCurseForgeFiles,
   searchCurseForge
 } from './curseforge'
+import { startDownloadWatch } from './downloadWatch'
 import {
   downloadToModsFolder,
   listInstalledMods,
@@ -37,29 +47,41 @@ import {
   getNexusMod,
   isPremiumRequiredError,
   listNexusFiles,
+  nexusSlowDownloadHintUrl,
   parseNxmLink,
   searchNexus
 } from './nexus'
-import { NEXUS_GAME_DOMAIN } from './constants'
 
-function requireCurseForgeKey(): string {
-  const key = resolveCurseForgeKey()
-  if (!key) {
-    throw new Error(
-      'Add a CurseForge API key in Settings (console.curseforge.com) or set SPIRE_CURSEFORGE_API_KEY.'
-    )
+function manualResult(
+  message: string,
+  pageUrl: string,
+  watchingDownloads = false
+): ModInstallResult {
+  return {
+    ok: false,
+    needsManualDownload: true,
+    needsManualNxm: true,
+    pageUrl,
+    message,
+    watchingDownloads
   }
-  return key
 }
 
-function requireNexusKey(): string {
-  const key = resolveNexusKey()
-  if (!key) {
-    throw new Error(
-      'Add a Nexus Mods API key in Settings (Account → API access) or set SPIRE_NEXUS_API_KEY.'
-    )
-  }
-  return key
+function beginWatchAfterBrowser(
+  instanceId: string,
+  source: ModSource,
+  modId: string,
+  modName: string,
+  fileNameHint?: string | null
+): string {
+  const st = startDownloadWatch({
+    instanceId,
+    source,
+    modId,
+    modName,
+    fileNameHint
+  })
+  return st.message
 }
 
 export async function searchMods(
@@ -67,39 +89,74 @@ export async function searchMods(
   options: ModSearchOptions = {}
 ): Promise<ModSearchResult> {
   if (source === 'curseforge') {
-    return searchCurseForge(requireCurseForgeKey(), options)
+    const key = resolveCurseForgeKey()
+    if (!key) return keylessCurseForgeSearch(options)
+    return searchCurseForge(key, options)
   }
   if (source === 'modrinth') {
     return searchModrinth(options)
   }
-  return searchNexus(requireNexusKey(), options)
+  return searchNexus(resolveNexusKey(), options)
 }
 
 export async function getModDetails(source: ModSource, modId: string): Promise<ModDetails> {
   if (source === 'curseforge') {
-    return getCurseForgeDetails(requireCurseForgeKey(), modId)
+    const key = resolveCurseForgeKey()
+    if (!key) {
+      const pageUrl = `https://www.curseforge.com/hytale/mods/${modId}`
+      return {
+        listing: {
+          source: 'curseforge',
+          id: modId,
+          slug: modId,
+          name: `Mod ${modId}`,
+          summary: '',
+          author: 'Unknown',
+          downloads: 0,
+          logoUrl: null,
+          pageUrl,
+          updatedAt: null
+        },
+        description:
+          'No CurseForge API key available. Use Download to open the Files page in your browser, then Import file.',
+        categories: [],
+        createdAt: null,
+        versions: [],
+        images: [],
+        quickDownloadAvailable: false,
+        notice:
+          'Optional CurseForge API key (or Spire embedded key) enables full detail, gallery, and Download quickly.'
+      }
+    }
+    return getCurseForgeDetails(key, modId)
   }
   if (source === 'modrinth') {
     return getModrinthDetails(modId)
   }
-  return getNexusDetails(requireNexusKey(), modId)
+  return getNexusDetails(modId, resolveNexusKey())
 }
 
 export async function getModFiles(source: ModSource, modId: string): Promise<ModFileInfo[]> {
   if (source === 'curseforge') {
-    return listCurseForgeFiles(requireCurseForgeKey(), modId)
+    const key = resolveCurseForgeKey()
+    if (!key) return []
+    return listCurseForgeFiles(key, modId)
   }
   if (source === 'modrinth') {
     return listModrinthVersions(modId)
   }
-  return listNexusFiles(requireNexusKey(), Number(modId))
+  const key = resolveNexusKey()
+  if (!key) return []
+  return listNexusFiles(Number(modId), key)
 }
 
 export async function installMod(
   instanceId: string,
   source: ModSource,
   modId: string,
-  fileId?: string
+  fileId?: string,
+  mode: ModInstallMode = 'slow',
+  modName?: string
 ): Promise<ModInstallResult> {
   if (!getInstance(instanceId)) {
     return { ok: false, message: 'Instance not found.' }
@@ -107,12 +164,12 @@ export async function installMod(
 
   try {
     if (source === 'curseforge') {
-      return await installFromCurseForge(instanceId, modId, fileId)
+      return await installFromCurseForge(instanceId, modId, fileId, mode, modName)
     }
     if (source === 'modrinth') {
       return await installFromModrinth(instanceId, modId, fileId)
     }
-    return await installFromNexus(instanceId, modId, fileId)
+    return await installFromNexus(instanceId, modId, fileId, mode, modName)
   } catch (err) {
     return {
       ok: false,
@@ -124,21 +181,54 @@ export async function installMod(
 async function installFromCurseForge(
   instanceId: string,
   modId: string,
-  fileId?: string
+  fileId: string | undefined,
+  mode: ModInstallMode,
+  modName?: string
 ): Promise<ModInstallResult> {
-  const apiKey = requireCurseForgeKey()
-  const listing = await getCurseForgeMod(apiKey, modId)
+  const apiKey = resolveCurseForgeKey()
+
+  let listing: ModListing
+  if (apiKey) {
+    listing = await getCurseForgeMod(apiKey, modId)
+  } else {
+    listing = {
+      source: 'curseforge',
+      id: modId,
+      slug: modId,
+      name: modName?.trim() || `Mod ${modId}`,
+      summary: '',
+      author: 'Unknown',
+      downloads: 0,
+      logoUrl: null,
+      pageUrl: `https://www.curseforge.com/hytale/mods/${modId}`,
+      updatedAt: null
+    }
+  }
+
+  const filesPage = curseForgeFilesPageUrl(listing, fileId)
+
+  // Slow / free path: browser Files; Spire watches Downloads and auto-imports
+  if (mode === 'slow' || !apiKey) {
+    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
+    return manualResult(
+      apiKey
+        ? 'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Or use Download quickly for in-app install.'
+        : 'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CF API key (Settings or embedded in code) for Download quickly.',
+      filesPage,
+      true
+    )
+  }
+
   const files = await listCurseForgeFiles(apiKey, modId)
   const file = fileId
     ? files.find((f) => f.fileId === fileId)
     : files.find((f) => f.primary) ?? files[0]
 
   if (!file) {
-    return { ok: false, message: 'No downloadable files found for this mod.' }
+    return manualResult('No downloadable files via API — opened Files page.', filesPage)
   }
 
-  const url =
-    file.downloadUrl || (await getCurseForgeDownloadUrl(apiKey, modId, file.fileId))
+  const url = file.downloadUrl || (await getCurseForgeDownloadUrl(apiKey, modId, file.fileId))
 
   await downloadToModsFolder(instanceId, url, file.fileName, {
     'x-api-key': apiKey
@@ -169,7 +259,10 @@ async function installFromModrinth(
       message: details.notice || 'Modrinth does not host Hytale mods yet.'
     }
   }
-  const { url, fileName } = await getModrinthDownloadUrl(modId, fileId || details.versions[0]?.fileId)
+  const { url, fileName } = await getModrinthDownloadUrl(
+    modId,
+    fileId || details.versions[0]?.fileId
+  )
   await downloadToModsFolder(instanceId, url, fileName)
   const installed = upsertInstalledMod(instanceId, {
     source: 'modrinth',
@@ -186,34 +279,56 @@ async function installFromModrinth(
 async function installFromNexus(
   instanceId: string,
   modId: string,
-  fileId?: string
+  fileId: string | undefined,
+  mode: ModInstallMode,
+  modName?: string
 ): Promise<ModInstallResult> {
-  const apiKey = requireNexusKey()
-  const listing = await getNexusMod(apiKey, Number(modId))
-  const files = await listNexusFiles(apiKey, Number(modId))
-  const file = fileId
-    ? files.find((f) => f.fileId === fileId)
-    : files.find((f) => f.primary) ?? files[0]
-
-  if (!file) {
-    return { ok: false, message: 'No downloadable files found for this mod.' }
+  const apiKey = resolveNexusKey()
+  const slowUrl = nexusSlowDownloadHintUrl(modId, fileId)
+  let displayName = modName?.trim() || `Nexus mod ${modId}`
+  if (apiKey) {
+    try {
+      displayName = (await getNexusMod(Number(modId), apiKey)).name
+    } catch {
+      // keep hint name
+    }
   }
 
+  // Free / slow path: browser Slow download; watch Downloads for auto-import.
+  // Fully in-app without Premium: use Nexus “Mod Manager Download” (nxm://) instead.
+  if (mode === 'slow' || !apiKey) {
+    beginWatchAfterBrowser(instanceId, 'nexus', modId, displayName)
+    return manualResult(
+      apiKey
+        ? 'Opened Nexus Files. Prefer “Mod Manager Download” (comes straight into Spire via nxm). Or use Slow download — Spire watches Downloads and auto-imports when it finishes. Download quickly uses Premium CDN.'
+        : 'Opened Nexus Files. Prefer “Mod Manager Download” (comes straight into Spire via nxm). Or use Slow download — Spire watches Downloads and auto-imports when it finishes. Optional Premium API key enables Download quickly.',
+      slowUrl,
+      true
+    )
+  }
+
+  // Quick path: Premium API CDN
   try {
-    const urls = await getNexusDownloadUrls(apiKey, Number(modId), Number(file.fileId))
-    const url = urls[0]
-    if (!url) {
-      return {
-        ok: false,
-        message: 'Nexus returned no download URL.',
-        needsManualNxm: true,
-        pageUrl: `${listing.pageUrl}?tab=files`
-      }
+    const listing = await getNexusMod(Number(modId), apiKey)
+    const files = await listNexusFiles(Number(modId), apiKey)
+    const file = fileId
+      ? files.find((f) => f.fileId === fileId)
+      : files.find((f) => f.primary) ?? files[0]
+
+    if (!file) {
+      return manualResult('No files listed via API — opened Files tab.', slowUrl)
     }
 
-    await downloadToModsFolder(instanceId, url, file.fileName, {
-      apikey: apiKey
-    })
+    const urls = await getNexusDownloadUrls(Number(modId), Number(file.fileId), { apiKey })
+    const url = urls[0]
+    if (!url) {
+      return manualResult(
+        'Nexus returned no CDN URL (Premium may be required). Opened Files for Slow download / nxm.',
+        slowUrl
+      )
+    }
+
+    await downloadToModsFolder(instanceId, url, file.fileName, { apikey: apiKey })
 
     const installed = upsertInstalledMod(instanceId, {
       source: 'nexus',
@@ -228,13 +343,10 @@ async function installFromNexus(
     return { ok: true, message: `Installed “${listing.name}”`, installed }
   } catch (err) {
     if (isPremiumRequiredError(err)) {
-      return {
-        ok: false,
-        needsManualNxm: true,
-        pageUrl: `${listing.pageUrl}?tab=files`,
-        message:
-          'Free Nexus accounts can’t API-download. Opened the Files tab — click “Mod Manager Download”, or paste the nxm:// link below.'
-      }
+      return manualResult(
+        'Premium API download unavailable — opened Files for Slow download or nxm Mod Manager Download.',
+        slowUrl
+      )
     }
     throw err
   }
@@ -250,34 +362,50 @@ export async function installFromNxmLink(
 
   try {
     const parsed = parseNxmLink(nxmUrl)
-    const apiKey = requireNexusKey()
-    const listing = await getNexusMod(apiKey, parsed.modId)
-    const fileMeta = await getNexusFileInfo(apiKey, parsed.modId, parsed.fileId)
-    const fileName = fileMeta?.file_name || `nexus-${parsed.modId}-${parsed.fileId}.zip`
+    const apiKey = resolveNexusKey()
+    let name = `Nexus mod ${parsed.modId}`
+    let pageUrl = `https://www.nexusmods.com/${parsed.domain || NEXUS_GAME_DOMAIN}/mods/${parsed.modId}`
+    let fileName = `nexus-${parsed.modId}-${parsed.fileId}.zip`
 
-    const urls = await getNexusDownloadUrls(apiKey, parsed.modId, parsed.fileId, {
+    if (apiKey) {
+      try {
+        const listing = await getNexusMod(parsed.modId, apiKey)
+        name = listing.name
+        pageUrl = listing.pageUrl
+      } catch {
+        // continue with stubs
+      }
+      const fileMeta = await getNexusFileInfo(parsed.modId, parsed.fileId, apiKey)
+      if (fileMeta?.file_name) fileName = fileMeta.file_name
+    }
+
+    const urls = await getNexusDownloadUrls(parsed.modId, parsed.fileId, {
+      apiKey,
       key: parsed.key,
       expires: parsed.expires,
       domain: parsed.domain || NEXUS_GAME_DOMAIN
     })
     const url = urls[0]
     if (!url) {
-      return { ok: false, message: 'Could not resolve download URL from nxm link.' }
+      return manualResult(
+        'Could not resolve download URL from nxm link — opened Files tab.',
+        nexusSlowDownloadHintUrl(parsed.modId, String(parsed.fileId))
+      )
     }
 
-    await downloadToModsFolder(instanceId, url, fileName, { apikey: apiKey })
+    await downloadToModsFolder(instanceId, url, fileName, apiKey ? { apikey: apiKey } : undefined)
 
     const installed = upsertInstalledMod(instanceId, {
       source: 'nexus',
       modId: String(parsed.modId),
       fileId: String(parsed.fileId),
-      name: listing.name,
+      name,
       fileName: fileName.replace(/[\\/:*?"<>|]/g, '_'),
       installedAt: new Date().toISOString(),
-      pageUrl: listing.pageUrl
+      pageUrl
     })
 
-    return { ok: true, message: `Installed “${listing.name}” via nxm`, installed }
+    return { ok: true, message: `Installed “${name}” via nxm`, installed }
   } catch (err) {
     return {
       ok: false,
@@ -316,6 +444,19 @@ export async function importLocalModFile(
       message: err instanceof Error ? err.message : String(err)
     }
   }
+}
+
+export function browseFallbackUrl(source: ModSource, query?: string): string {
+  if (source === 'curseforge') {
+    const q = query?.trim()
+    return q
+      ? `${CURSEFORGE_HYTALE_BROWSE_URL}?search=${encodeURIComponent(q)}`
+      : CURSEFORGE_HYTALE_BROWSE_URL
+  }
+  if (source === 'nexus') {
+    return NEXUS_HYTALE_BROWSE_URL
+  }
+  return 'https://modrinth.com/mods'
 }
 
 export { listInstalledMods, removeInstalledMod }
