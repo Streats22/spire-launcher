@@ -6,9 +6,10 @@
   "description": "Cross-platform Hytale instance launcher — Prism-style profiles without redistributing the game.",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/patch-dev-electron-name.mjs && electron-vite dev -- --class=Spire",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "postinstall": "node scripts/patch-dev-electron-name.mjs",
     "dist": "npm run build && electron-builder --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
@@ -41,9 +42,11 @@
     "mac": {
       "icon": "resources/icon.icns",
       "category": "public.app-category.games",
+      "executableName": "Spire",
       "extendInfo": {
         "CFBundleName": "Spire",
-        "CFBundleDisplayName": "Spire"
+        "CFBundleDisplayName": "Spire",
+        "CFBundleIdentifier": "dev.spire.launcher"
       },
       "target": [
         "dmg",
@@ -75,6 +78,7 @@
     },
     "win": {
       "icon": "resources/icon.ico",
+      "executableName": "Spire",
       "target": [
         "nsis",
         "portable"
@@ -88,6 +92,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Spire",
+      "uninstallDisplayName": "Spire",
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
       "installerHeader": "resources/installerHeader.bmp",
@@ -98,6 +103,13 @@
     },
     "linux": {
       "icon": "resources/icon.png",
+      "executableName": "Spire",
+      "desktop": {
+        "entry": {
+          "Name": "Spire",
+          "StartupWMClass": "Spire"
+        }
+      },
       "category": "Game",
       "target": [
         "AppImage",

@@ -76,11 +76,16 @@ import type {
   SpireSettings
 } from '../shared/types'
 
-// Must run before ready so macOS menu bar / About / process name pick up Spire
-// instead of the Electron binary name used in electron-vite `npm run dev`.
+// Must run before ready so menus / About / process name pick up Spire.
+// macOS Dock hover still needs CFBundleName on the running .app — see
+// scripts/patch-dev-electron-name.mjs (wired into `npm run dev`).
 app.setName('Spire')
 if (process.platform === 'darwin') {
   app.setAboutPanelOptions({ applicationName: 'Spire' })
+}
+if (process.platform === 'linux') {
+  // Helps some WMs show Spire instead of electron in taskbars.
+  app.commandLine.appendSwitch('class', 'Spire')
 }
 
 function resolveAppIconPath(): string {
@@ -409,7 +414,10 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // Toolkit's helper uses process.execPath as the id while unpackaged, which
+    // makes the Windows taskbar hover say "Electron". Force Spire afterwards.
     electronApp.setAppUserModelId('dev.spire.launcher')
+    app.setAppUserModelId('dev.spire.launcher')
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window)
     })

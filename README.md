@@ -31,7 +31,7 @@ npm install
 npm run dev
 ```
 
-On macOS, `npm run dev` runs the stock Electron binary from `node_modules`, so the **Dock may still say “Electron”** even though the window title, menu name (`app.setName('Spire')`), and About panel use Spire. A packaged build (`npm run dist:mac`) produces `Spire.app` with the correct Dock / bundle name (`CFBundleName`).
+On macOS, `npm run dev` patches the local Electron.app Info.plist so the Dock / menu bar / Cmd+Tab show **Spire** (not “Electron”). Quit and relaunch after `npm install` if the label is stale. Packaged builds (`npm run dist:mac`) produce `Spire.app` with the same name via `productName` / `CFBundleName`.
 
 ## Package
 
