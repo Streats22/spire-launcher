@@ -3,6 +3,7 @@ out
 release
 dist
 .local-dev
+.tools
 .DS_Store
 *.log
 .env

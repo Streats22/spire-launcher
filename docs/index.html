@@ -3,19 +3,48 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Spire — Hytale instance launcher</title>
+    <title>Spire — Hytale instance launcher for Windows, macOS &amp; Linux</title>
     <meta
       name="description"
-      content="Spire is a cross-platform Hytale instance launcher. Isolated profiles, mods, and worlds — without redistributing the game."
+      content="Spire is a free, open-source Hytale instance launcher. Isolated profiles, mods, and worlds — local-first, no Spire accounts, without redistributing the game."
     />
+    <meta
+      name="keywords"
+      content="Spire, Hytale launcher, Hytale mods, Hytale instances, Prism Launcher, CurseForge, Nexus Mods, open source"
+    />
+    <meta name="author" content="streats1" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://streats22.github.io/spire-launcher/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Spire" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://streats22.github.io/spire-launcher/" />
     <meta property="og:title" content="Spire — Hytale instance launcher" />
     <meta
       property="og:description"
-      content="Prism-style profiles for Hytale. Local-first, no Spire accounts, no telemetry."
+      content="Prism-style profiles for Hytale. Local-first, no Spire accounts, no telemetry. Windows, macOS, and Linux."
     />
-    <meta property="og:image" content="assets/logo.png" />
+    <meta
+      property="og:image"
+      content="https://streats22.github.io/spire-launcher/assets/logo.png"
+    />
+    <meta property="og:image:alt" content="Spire launcher logo — pixel art tower" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Spire — Hytale instance launcher" />
+    <meta
+      name="twitter:description"
+      content="Isolated Hytale profiles, mods, and worlds. Open source, local-first."
+    />
+    <meta
+      name="twitter:image"
+      content="https://streats22.github.io/spire-launcher/assets/logo.png"
+    />
+
     <meta name="theme-color" content="#10141a" />
     <link rel="icon" href="assets/icon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -23,6 +52,51 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://streats22.github.io/spire-launcher/#website",
+            "url": "https://streats22.github.io/spire-launcher/",
+            "name": "Spire",
+            "description": "Cross-platform Hytale instance launcher with isolated profiles and mods.",
+            "publisher": { "@id": "https://streats22.github.io/spire-launcher/#org" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://streats22.github.io/spire-launcher/#org",
+            "name": "Spire",
+            "url": "https://streats22.github.io/spire-launcher/",
+            "logo": "https://streats22.github.io/spire-launcher/assets/logo.png",
+            "sameAs": ["https://github.com/Streats22/spire-launcher"]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Spire",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Windows, macOS, Linux",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "downloadUrl": "https://github.com/Streats22/spire-launcher/releases/latest",
+            "softwareVersion": "0.1.0",
+            "description": "Open-source Hytale instance launcher with isolated profiles, mods, worlds, and .spirepack sharing. Does not redistribute the Hytale client.",
+            "url": "https://streats22.github.io/spire-launcher/",
+            "image": "https://streats22.github.io/spire-launcher/assets/logo.png",
+            "codeRepository": "https://github.com/Streats22/spire-launcher",
+            "author": {
+              "@type": "Person",
+              "name": "streats1",
+              "url": "https://github.com/Streats22"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true"></div>
@@ -49,10 +123,10 @@
       <section class="hero">
         <div class="hero-copy">
           <p class="brand-mark">
-            <img src="assets/logo.png" alt="" width="72" height="72" />
+            <img src="assets/logo.png" alt="Spire logo" width="72" height="72" />
             <span>Spire</span>
           </p>
-          <h1>Run Hytale your way — profiles, mods, and worlds kept apart.</h1>
+          <h1>Hytale instance launcher — profiles, mods, and worlds kept apart.</h1>
           <p class="lede">
             A Prism-style instance launcher for macOS, Windows, and Linux. You own the game through
             official channels; Spire only manages what surrounds it.

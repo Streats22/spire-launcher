@@ -5,6 +5,9 @@
   "private": true,
   "description": "Cross-platform Hytale instance launcher — Prism-style profiles without redistributing the game.",
   "author": "streats1 <70856472+Streats22@users.noreply.github.com>",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "node scripts/patch-dev-electron-name.mjs && electron-vite dev -- --class=Spire",
@@ -133,8 +136,8 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
-    "electron": "^37.2.0",
-    "electron-builder": "^26.13.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

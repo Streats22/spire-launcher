@@ -264,7 +264,7 @@ Keys in Settings are equivalent and clearable. Do not commit real keys to git.
 
 ## Develop
 
-**Requirements:** Node.js 20+ (22+ recommended for some tooling), npm.
+**Requirements:** Node.js **22.12+** (Electron 43 / electron-builder tooling), npm.
 
 ```bash
 git clone <repo-url>
@@ -307,7 +307,7 @@ npm run dist:linux   # AppImage + .deb
 | macOS DMG | **macOS required** (`npm run dist:mac`) | `Spire-<version>.dmg` |
 | Linux AppImage / deb | Linux recommended; can also be built from Windows via electron-builder | `Spire-<version>.AppImage`, `Spire-<version>.deb` |
 
-> **Packaging tip:** This repo pins `electron-builder@26.13.0` so blockmap generation works on Node 20 (newer 26.14+ hits an ESM/`@noble/hashes` issue). Prefer Node 22+ when possible.
+> **Packaging tip:** Use Node **22.12+**. Spire targets `electron-builder@26.15.x` (blockmap / icon tooling is TypeScript-based and needs a current Node).
 
 Branded installer chrome:
 
