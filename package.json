@@ -88,6 +88,9 @@
         "portable"
       ]
     },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,

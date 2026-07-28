@@ -9,7 +9,7 @@
 | Platform | File | Notes |
 | --- | --- | --- |
 | **Windows** | `Spire-Setup-0.1.0.exe` | Recommended installer (shortcuts, optional startup) |
-| **Windows** | `Spire 0.1.0.exe` | Portable — run from any folder |
+| **Windows** | `Spire.0.1.0.exe` | Portable — run from any folder |
 | **macOS** | `Spire-0.1.0.dmg` | Drag Spire into Applications |
 | **Linux** | `Spire-0.1.0.AppImage` | `chmod +x` then run |
 | **Linux** | `Spire-0.1.0.deb` | `sudo dpkg -i …` |
