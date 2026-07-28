@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ContentCategory,
+  ContentDownloadProgress,
   ContentKind,
   DownloadWatchStatus,
   InstalledMod,
@@ -11,6 +12,7 @@ import type {
   ModSource
 } from '../../shared/types'
 import ContextMenu, { useContextMenu } from './ContextMenu'
+import DownloadProgressPanel from './DownloadProgressPanel'
 
 const PAGE_SIZE = 40
 
@@ -44,7 +46,7 @@ function kindLabel(kind: ContentKind): string {
 function kindInstallHint(kind: ContentKind): string {
   switch (kind) {
     case 'worlds':
-      return 'World packs install into this instance’s worlds/ folder.'
+      return 'World packs install into this instance’s Saves folder (same place Hytale looks).'
     case 'prefabs':
       return 'Prefabs install into prefabs/. Copy into a world save’s prefabs/ folder to place in-game.'
     case 'bootstrap':
@@ -116,10 +118,12 @@ export default function ModsBrowser({
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [watchStatus, setWatchStatus] = useState<DownloadWatchStatus | null>(null)
+  const [contentProgress, setContentProgress] = useState<ContentDownloadProgress | null>(null)
   const [view, setView] = useState<'installed' | 'download'>(initialView)
   const { menu, openMenu, closeMenu } = useContextMenu()
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const resultsRef = useRef<HTMLDivElement | null>(null)
+  const detailRef = useRef<HTMLElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const stateRef = useRef({
     query,
     source,
@@ -280,6 +284,10 @@ export default function ModsBrowser({
   }, [source, runSearch, view, contentKind, categoryId])
 
   useEffect(() => {
+    detailRef.current?.scrollTo({ top: 0 })
+  }, [selected?.id, selected?.source])
+
+  useEffect(() => {
     if (view !== 'download') return
     const root = resultsRef.current
     const sentinel = sentinelRef.current
@@ -341,6 +349,11 @@ export default function ModsBrowser({
     },
     [instanceId, onToast, refreshInstalled]
   )
+
+  useEffect(() => {
+    void window.spire.getContentDownloadProgress().then(setContentProgress)
+    return window.spire.onContentDownloadProgress(setContentProgress)
+  }, [])
 
   useEffect(() => {
     return window.spire.onNxmReceived((url) => {
@@ -530,6 +543,18 @@ export default function ModsBrowser({
     )
   }
 
+  const providerOptions = (
+    kindOnlyCurseForge
+      ? ([['curseforge', 'CurseForge']] as const)
+      : ([
+          ['curseforge', 'CurseForge'],
+          ['nexus', 'Nexus'],
+          ['modtale', 'Modtale'],
+          ['modifold', 'Modifold'],
+          ['thunderstore', 'Thunderstore']
+        ] as const)
+  )
+
   return (
     <div className="mods">
       <div className="mods-toolbar">
@@ -545,28 +570,25 @@ export default function ModsBrowser({
         >
           ← Installed
         </button>
-        <div className="source-tabs" role="tablist">
-          {(
-            kindOnlyCurseForge
-              ? ([['curseforge', 'CurseForge']] as const)
-              : ([
-                  ['curseforge', 'CurseForge'],
-                  ['nexus', 'Nexus'],
-                  ['modtale', 'Modtale'],
-                  ['modifold', 'Modifold'],
-                  ['thunderstore', 'Thunderstore']
-                ] as const)
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`source-tab${source === id ? ' active' : ''}`}
-              onClick={() => setSource(id)}
+        {providerOptions.length > 1 ? (
+          <label className="mods-provider-field">
+            <span className="sr-only">Provider</span>
+            <select
+              className="mods-sort mods-provider-select"
+              value={source}
+              onChange={(e) => setSource(e.target.value as ModSource)}
+              aria-label="Mod provider"
             >
-              {label}
-            </button>
-          ))}
-        </div>
+              {providerOptions.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="mods-provider-label">{providerOptions[0][1]}</span>
+        )}
         <form
           className="mods-search-inline"
           onSubmit={(e) => {
@@ -618,9 +640,11 @@ export default function ModsBrowser({
             {loading ? '…' : 'Search'}
           </button>
         </form>
-        <button className="btn" type="button" onClick={() => void onImportFile()}>
-          Import file
-        </button>
+        <div className="mods-toolbar-actions">
+          <button className="btn" type="button" onClick={() => void onImportFile()}>
+            Import file
+          </button>
+        </div>
       </div>
 
       {isNexus ? (
@@ -759,7 +783,7 @@ export default function ModsBrowser({
         </div>
 
         {selected && listing ? (
-          <section className="mod-detail" aria-label="Download options">
+          <section className="mod-detail" aria-label="Download options" ref={detailRef}>
             <div className="mod-detail-header">
               <button
                 className="btn btn-ghost"
@@ -816,9 +840,7 @@ export default function ModsBrowser({
                       {details.versions.map((v) => {
                         const meta = [
                           v.releaseType,
-                          v.fileDate ? new Date(v.fileDate).toLocaleDateString() : null,
-                          formatBytes(v.fileLength) || null,
-                          v.primary ? 'primary' : null
+                          v.fileDate ? new Date(v.fileDate).toLocaleDateString() : null
                         ]
                           .filter(Boolean)
                           .join(' · ')
@@ -883,6 +905,7 @@ export default function ModsBrowser({
                     Import file
                   </button>
                 </div>
+                <DownloadProgressPanel progress={contentProgress} />
 
                 <label className="mod-photos-toggle">
                   <input

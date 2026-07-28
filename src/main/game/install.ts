@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { HytaleDownloadResult, HytalePatchline } from '../../shared/types'
-import { requireSignedIn } from '../auth/account'
+import { requireLauncherAccess } from '../auth/account'
 import { ACCOUNT_DATA, USER_AGENT } from '../auth/constants'
 import { withAuthRetry } from '../auth/oauth'
 import { getGameRoot, resolveClientPath } from '../paths'
@@ -146,7 +146,7 @@ export async function installFullChannel(
   installBusy = true
 
   try {
-    await requireSignedIn()
+    await requireLauncherAccess()
 
     emitProgress({
       phase: 'resolving',

@@ -1,6 +1,7 @@
 import type {
   ContentCategory,
   ContentKind,
+  ModDependencyRef,
   ModDetails,
   ModFileInfo,
   ModImage,
@@ -10,6 +11,8 @@ import type {
 } from '../../shared/types'
 import {
   CURSEFORGE_API_BASE,
+  CURSEFORGE_CLASS_IDS,
+  CURSEFORGE_CLASS_SLUGS,
   CURSEFORGE_HYTALE_BROWSE_URL,
   CURSEFORGE_HYTALE_GAME_ID,
   SPIRE_USER_AGENT
@@ -76,9 +79,60 @@ interface CfFile {
   isAvailable: boolean
   releaseType?: number
   gameVersions?: string[]
+  dependencies?: { modId?: number; relationType?: number }[]
+}
+
+/** CurseForge relationType → Spire relation. Auto-install required + embedded + include. */
+function mapCfRelation(relationType: number | undefined): ModDependencyRef['relation'] | null {
+  switch (relationType) {
+    case 1:
+      return 'embedded'
+    case 2:
+      return 'optional'
+    case 3:
+      return 'required'
+    case 4:
+      return 'tool'
+    case 5:
+      return 'incompatible'
+    case 6:
+      return 'include'
+    default:
+      return null
+  }
+}
+
+function mapCfDependencies(file: CfFile): ModDependencyRef[] {
+  const out: ModDependencyRef[] = []
+  for (const dep of file.dependencies ?? []) {
+    if (dep.modId == null) continue
+    const relation = mapCfRelation(dep.relationType)
+    if (!relation) continue
+    out.push({
+      source: 'curseforge',
+      modId: String(dep.modId),
+      relation
+    })
+  }
+  return out
+}
+
+export function isAutoInstallDependency(relation: ModDependencyRef['relation']): boolean {
+  return relation === 'required' || relation === 'embedded' || relation === 'include'
+}
+
+function browseSlugForClassId(classId?: number): string {
+  if (classId == null) return CURSEFORGE_CLASS_SLUGS.mods
+  for (const [kind, id] of Object.entries(CURSEFORGE_CLASS_IDS)) {
+    if (id === classId) {
+      return CURSEFORGE_CLASS_SLUGS[kind as keyof typeof CURSEFORGE_CLASS_SLUGS]
+    }
+  }
+  return CURSEFORGE_CLASS_SLUGS.mods
 }
 
 function mapMod(mod: CfMod): ModListing {
+  const classSlug = browseSlugForClassId(mod.classId)
   return {
     source: 'curseforge',
     id: String(mod.id),
@@ -88,7 +142,8 @@ function mapMod(mod: CfMod): ModListing {
     author: mod.authors?.[0]?.name ?? 'Unknown',
     downloads: Math.round(mod.downloadCount ?? 0),
     logoUrl: mod.logo?.thumbnailUrl ?? mod.logo?.url ?? null,
-    pageUrl: mod.links?.websiteUrl ?? `https://www.curseforge.com/hytale/mods/${mod.slug}`,
+    pageUrl:
+      mod.links?.websiteUrl ?? `https://www.curseforge.com/hytale/${classSlug}/${mod.slug}`,
     updatedAt: mod.dateModified ?? null,
     categories: (mod.categories ?? []).map((c) => c.name)
   }
@@ -226,8 +281,22 @@ export async function listCurseForgeFiles(apiKey: string, modId: string): Promis
             ? 'beta'
             : f.releaseType === 3
               ? 'alpha'
-              : undefined
+              : undefined,
+      dependencies: mapCfDependencies(f)
     }))
+}
+
+/** Required / embedded / include dependency mod ids for a CurseForge file. */
+export async function listCurseForgeAutoDependencies(
+  apiKey: string,
+  modId: string,
+  fileId?: string
+): Promise<ModDependencyRef[]> {
+  const files = await listCurseForgeFiles(apiKey, modId)
+  const file = fileId
+    ? files.find((f) => f.fileId === fileId)
+    : files.find((f) => f.primary) ?? files[0]
+  return (file?.dependencies ?? []).filter((d) => isAutoInstallDependency(d.relation))
 }
 
 export async function getCurseForgeDownloadUrl(
@@ -245,6 +314,61 @@ export async function getCurseForgeDownloadUrl(
     )
   }
   return json.data
+}
+
+/** ForgeCDN layout used when the files list omits `downloadUrl`. */
+export function curseForgeCdnFileUrl(fileId: string | number, fileName: string): string {
+  const id = Number(fileId)
+  const top = Math.floor(id / 1000)
+  const bottom = id % 1000
+  return `https://edge.forgecdn.net/files/${top}/${bottom}/${fileName}`
+}
+
+/**
+ * Resolve a direct file URL: listed URL → download-url API → ForgeCDN probe.
+ * Throws when the author blocked third-party downloads (browser required).
+ */
+export async function resolveCurseForgeFileUrl(
+  apiKey: string,
+  modId: string,
+  file: Pick<ModFileInfo, 'fileId' | 'fileName' | 'downloadUrl'>
+): Promise<string> {
+  if (file.downloadUrl?.trim()) return file.downloadUrl.trim()
+
+  try {
+    return await getCurseForgeDownloadUrl(apiKey, modId, file.fileId)
+  } catch {
+    // Try CDN layout before giving up — some files omit downloadUrl but still serve.
+  }
+
+  const cdn = curseForgeCdnFileUrl(file.fileId, file.fileName)
+  const head = await fetch(cdn, {
+    method: 'HEAD',
+    headers: { 'User-Agent': SPIRE_USER_AGENT },
+    redirect: 'follow'
+  }).catch(() => null)
+  if (head?.ok) return cdn
+
+  const ranged = await fetch(cdn, {
+    method: 'GET',
+    headers: {
+      'User-Agent': SPIRE_USER_AGENT,
+      Range: 'bytes=0-0'
+    },
+    redirect: 'follow'
+  }).catch(() => null)
+  if (ranged && (ranged.ok || ranged.status === 206)) {
+    try {
+      await ranged.body?.cancel()
+    } catch {
+      // ignore
+    }
+    return cdn
+  }
+
+  throw new CurseForgeError(
+    'Author disabled third-party downloads — Spire can’t pull this file in-app. Use the Files page in your browser, then Import if needed.'
+  )
 }
 
 export async function getCurseForgeMod(apiKey: string, modId: string): Promise<ModListing> {

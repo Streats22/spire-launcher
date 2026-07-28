@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, sep } from 'path'
 import type { Platform } from '../shared/types'
 
 export function getPlatform(): Platform {
@@ -78,22 +78,96 @@ export function resolveJavaPath(installRoot: string): string | null {
 
 export function defaultInstallGuesses(): string[] {
   const home = app.getPath('home')
+  const appData = app.getPath('appData')
+  const guesses: string[] = []
+
   if (process.platform === 'win32') {
-    return [
-      join(process.env['LOCALAPPDATA'] ?? join(home, 'AppData', 'Local'), 'Hytale'),
-      join(process.env['PROGRAMFILES'] ?? 'C:\\Program Files', 'Hytale')
-    ]
-  }
-  if (process.platform === 'darwin') {
-    return [
+    const local = process.env['LOCALAPPDATA'] ?? join(home, 'AppData', 'Local')
+    const programFiles = process.env['PROGRAMFILES'] ?? 'C:\\Program Files'
+    const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
+    guesses.push(
+      // Official launcher (docs: %appdata%\Hytale\install\release\…)
+      join(appData, 'Hytale'),
+      join(local, 'Hytale'),
+      join(programFiles, 'Hytale'),
+      join(programFilesX86, 'Hytale'),
+      // Spire-managed Wharf installs
+      join(getGameRoot(), 'release'),
+      join(getGameRoot(), 'pre-release'),
+      getGameRoot()
+    )
+  } else if (process.platform === 'darwin') {
+    guesses.push(
       join(home, 'Library', 'Application Support', 'Hytale'),
       '/Applications/Hytale.app',
-      join(home, 'Applications', 'Hytale.app')
-    ]
+      join(home, 'Applications', 'Hytale.app'),
+      join(getGameRoot(), 'release'),
+      join(getGameRoot(), 'pre-release'),
+      getGameRoot()
+    )
+  } else {
+    const xdg =
+      process.env['XDG_DATA_HOME']?.trim() || join(home, '.local', 'share')
+    guesses.push(
+      join(xdg, 'Hytale'),
+      join(home, '.local', 'share', 'Hytale'),
+      join(home, 'Hytale'),
+      '/opt/Hytale',
+      join(getGameRoot(), 'release'),
+      join(getGameRoot(), 'pre-release'),
+      getGameRoot()
+    )
   }
-  return [
-    join(home, '.local', 'share', 'Hytale'),
-    join(home, 'Hytale'),
-    '/opt/Hytale'
-  ]
+
+  return [...new Set(guesses)]
+}
+
+export interface DetectedInstall {
+  path: string
+  clientPath: string
+  javaPath: string | null
+  /** Higher = more preferred (official roaming first). */
+  score: number
+  label: string
+}
+
+/**
+ * Scan common Hytale locations and return roots that contain a playable client.
+ * Prefer official AppData/Application Support installs over Spire-managed copies.
+ */
+export function detectGameInstalls(): DetectedInstall[] {
+  const guesses = defaultInstallGuesses()
+  const found: DetectedInstall[] = []
+
+  for (let i = 0; i < guesses.length; i++) {
+    const path = guesses[i]
+    if (!path || !existsSync(path)) continue
+    const clientPath = resolveClientPath(path)
+    if (!clientPath) continue
+    const javaPath = resolveJavaPath(path)
+    const isSpireManaged = path === getGameRoot() || path.startsWith(getGameRoot() + sep)
+    // Prefer earlier guesses; bump official (non-Spire) roots.
+    const score = (guesses.length - i) * 10 + (isSpireManaged ? 0 : 100) + (javaPath ? 5 : 0)
+    found.push({
+      path,
+      clientPath,
+      javaPath,
+      score,
+      label: isSpireManaged ? 'Spire download' : 'Official launcher'
+    })
+  }
+
+  found.sort((a, b) => b.score - a.score)
+  // De-dupe by resolved client path (same install via different roots).
+  const seen = new Set<string>()
+  return found.filter((item) => {
+    if (seen.has(item.clientPath)) return false
+    seen.add(item.clientPath)
+    return true
+  })
+}
+
+/** Best detected install root, or null. */
+export function detectBestGameInstall(): string | null {
+  return detectGameInstalls()[0]?.path ?? null
 }

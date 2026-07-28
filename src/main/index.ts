@@ -17,10 +17,15 @@ import { downloadAssetsZip, downloadChannel, getDownloadProgress, listChannels, 
 import { getInstanceRuntimeStatus } from './instanceStatus'
 import {
   createInstance,
+  createInstanceGroup,
   deleteInstance,
+  deleteInstanceGroup,
   duplicateInstance,
   getInstancePath,
   listInstances,
+  organizeInstances,
+  renameInstanceGroup,
+  reorderInstanceGroups,
   updateInstance
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
@@ -41,15 +46,20 @@ import {
   getDownloadWatchStatus,
   stopDownloadWatch
 } from './mods/downloadWatch'
+import {
+  getContentDownloadProgress
+} from './mods/contentProgress'
 import { getPlatform, getSpireRoot } from './paths'
 import {
   clearLocalCredentials,
+  detectAndApplyGameInstall,
   getLocalDataInfo,
   loadSettings,
   updateSettings
 } from './settings'
 import { checkForUpdate } from './updates'
 import {
+  applyModSetToSaves,
   createWorld,
   deleteWorld,
   duplicateWorld,
@@ -69,6 +79,7 @@ import {
 import type {
   CreateInstanceOptions,
   HytalePatchline,
+  InstanceOrganizationItem,
   InstancePatch,
   ModSearchOptions,
   ModSource,
@@ -181,6 +192,20 @@ function registerIpc(): void {
     if (result.canceled || !result.filePaths[0]) return null
     return result.filePaths[0]
   })
+  ipcMain.handle('spire:detectGameInstall', () => {
+    const result = detectAndApplyGameInstall(true)
+    return {
+      applied: result.applied,
+      path: result.path,
+      found: result.detections.map((d) => ({
+        path: d.path,
+        label: d.label,
+        clientPath: d.clientPath,
+        javaPath: d.javaPath
+      })),
+      settings: result.settings
+    }
+  })
   ipcMain.handle('spire:getInstallStatus', () => getInstallStatus())
   ipcMain.handle('spire:getLocalDataInfo', () => getLocalDataInfo())
   ipcMain.handle('spire:openSpireDataFolder', async () => {
@@ -206,6 +231,15 @@ function registerIpc(): void {
   ipcMain.handle('spire:updateInstance', (_e, id: string, patch: InstancePatch) =>
     updateInstance(id, patch)
   )
+  ipcMain.handle('spire:organizeInstances', (_e, items: InstanceOrganizationItem[]) =>
+    organizeInstances(items)
+  )
+  ipcMain.handle('spire:createInstanceGroup', (_e, name: string) => createInstanceGroup(name))
+  ipcMain.handle('spire:renameInstanceGroup', (_e, id: string, name: string) =>
+    renameInstanceGroup(id, name)
+  )
+  ipcMain.handle('spire:deleteInstanceGroup', (_e, id: string) => deleteInstanceGroup(id))
+  ipcMain.handle('spire:reorderInstanceGroups', (_e, ids: string[]) => reorderInstanceGroups(ids))
   ipcMain.handle('spire:duplicateInstance', (_e, id: string, newName?: string) =>
     duplicateInstance(id, newName)
   )
@@ -314,6 +348,9 @@ function registerIpc(): void {
   ipcMain.handle('spire:openWorldFolder', async (_e, instanceId: string, worldId: string) => {
     await shell.openPath(getWorldPath(instanceId, worldId))
   })
+  ipcMain.handle('spire:applyModSetToSaves', (_e, instanceId: string) =>
+    applyModSetToSaves(instanceId)
+  )
   ipcMain.handle('spire:listServers', (_e, instanceId: string) => listServers(instanceId))
   ipcMain.handle(
     'spire:upsertServer',
@@ -371,6 +408,7 @@ function registerIpc(): void {
     getInstanceRuntimeStatus(instanceId)
   )
   ipcMain.handle('spire:getHytaleDownloadProgress', () => getDownloadProgress())
+  ipcMain.handle('spire:getContentDownloadProgress', () => getContentDownloadProgress())
   ipcMain.handle('spire:openOfficialHytaleDownload', async () => {
     await shell.openExternal(OFFICIAL_DOWNLOAD_PAGE)
   })

@@ -7,19 +7,18 @@ import type {
   SpireSettings,
   UpdateCheckResult
 } from '../../shared/types'
+import { gameProfileLabel } from '../../shared/hytaleDisplay'
 import ContextMenu, { useContextMenu } from './ContextMenu'
 import CreateInstanceDialog from './CreateInstanceDialog'
+import InstanceBrowser from './InstanceBrowser'
+import SettingsView from './SettingsView'
 import VersionsView from './VersionsView'
 import spireLogo from './assets/spire-logo.png'
 import {
-  DENSITY_OPTIONS,
-  HOME_LAYOUT_OPTIONS,
-  THEME_OPTIONS,
   applyAppearance,
-  normalizeDensity,
-  normalizeHomeLayout,
-  normalizeTheme
+  normalizeHomeLayout
 } from './theme'
+import ActionIcon from './ui/ActionIcon'
 import type { SpireDensity, SpireHomeLayout, SpireTheme } from '../../shared/types'
 
 type View = 'home' | 'settings' | 'versions'
@@ -73,6 +72,8 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     return window.spire.onSettingsChanged((next) => {
       setSettings(next)
+      setCfKey(next.curseForgeApiKey ?? '')
+      setNexusKey(next.nexusApiKey ?? '')
       applyAppearance({
         theme: next.theme,
         density: next.density,
@@ -186,40 +187,6 @@ export default function App(): React.JSX.Element {
     ])
   }
 
-  async function onPickInstall(): Promise<void> {
-    const path = await window.spire.pickGameInstallPath()
-    if (!path) return
-    const next = await window.spire.setGameInstallPath(path)
-    setSettings(next)
-    setStatus(await window.spire.getInstallStatus())
-    setToast('Install path updated')
-  }
-
-  async function onSaveCredentials(): Promise<void> {
-    const next = await window.spire.updateSettings({
-      curseForgeApiKey: cfKey.trim() || null,
-      nexusApiKey: nexusKey.trim() || null
-    })
-    setSettings(next)
-    setToast('Saved locally')
-  }
-
-  async function onClearCredentials(): Promise<void> {
-    if (!confirm('Clear CurseForge/Nexus keys and Hytale session tokens?')) return
-    const next = await window.spire.clearLocalCredentials()
-    setSettings(next)
-    setCfKey('')
-    setNexusKey('')
-    setHytaleAuth(await window.spire.getHytaleAuthStatus())
-    setToast('Keys and Hytale session cleared')
-  }
-
-  async function onToggleUpdates(enabled: boolean): Promise<void> {
-    const next = await window.spire.updateSettings({ checkForUpdates: enabled })
-    setSettings(next)
-    setUpdate(await window.spire.checkForUpdate())
-  }
-
   async function onThemeChange(theme: SpireTheme): Promise<void> {
     applyAppearance({ theme })
     const next = await window.spire.updateSettings({ theme })
@@ -266,8 +233,8 @@ export default function App(): React.JSX.Element {
           </span>
         ) : null}
         {hytaleAuth?.signedIn ? (
-          <span className="toolbar-chip" title="Active Hytale account">
-            {hytaleAuth.displayName || 'Hytale'}
+          <span className="toolbar-chip" title="Active game profile">
+            {gameProfileLabel(hytaleAuth)}
             {(hytaleAuth.accounts?.length ?? 0) > 1
               ? ` · ${hytaleAuth.accounts.length}`
               : ''}
@@ -289,7 +256,7 @@ export default function App(): React.JSX.Element {
             title="Settings"
             aria-label="Settings"
           >
-            <span aria-hidden>⚙</span>
+            <ActionIcon name="settings" />
           </button>
         </div>
       </header>
@@ -314,237 +281,28 @@ export default function App(): React.JSX.Element {
 
       <div className={`workspace${showActionBar ? '' : ' full'}`}>
         <main className="content">
-          {view === 'settings' ? (
-            <div className="page">
-              <h1 className="page-title">Settings</h1>
-              <p className="page-sub">
-                Local only — no Spire accounts or cloud sync. Optional update check is one public
-                GET. Hytale session tokens stay on this machine.
-              </p>
-
-              <div className="panel">
-                <h2>Hytale accounts</h2>
-                <p>
-                  {hytaleAuth?.signedIn
-                    ? `Active: ${hytaleAuth.displayName || 'signed in'}${
-                        (hytaleAuth.accounts?.length ?? 0) > 1
-                          ? ` · ${hytaleAuth.accounts.length} accounts saved`
-                          : ''
-                      }. Manage under Install.`
-                    : (hytaleAuth?.accounts?.length ?? 0) > 0
-                      ? `${hytaleAuth!.accounts.length} saved account(s) — pick one under Install.`
-                      : 'Not signed in. Use Install to add an official Hytale account (you can save several).'}
-                </p>
-                <div className="row">
-                  <button className="btn" type="button" onClick={() => setView('versions')}>
-                    Open Install / accounts
-                  </button>
-                  {(hytaleAuth?.accounts?.length ?? 0) > 0 ? (
-                    <button
-                      className="btn btn-danger"
-                      type="button"
-                      onClick={() => {
-                        if (!confirm('Remove all saved Hytale accounts?')) return
-                        void window.spire.signOutAllHytale().then((status) => {
-                          setHytaleAuth(status)
-                          setToast('All Hytale accounts removed')
-                        })
-                      }}
-                    >
-                      Remove all accounts
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>Hytale install</h2>
-                <div className="path-row">
-                  <code title={settings?.gameInstallPath ?? undefined}>
-                    {settings?.gameInstallPath ?? 'Not set'}
-                  </code>
-                  <button className="btn" type="button" onClick={() => void onPickInstall()}>
-                    Browse
-                  </button>
-                </div>
-                <p style={{ marginTop: 8 }}>
-                  {status?.issues?.length ? status.issues.join(' ') : 'Install looks valid.'}
-                </p>
-              </div>
-
-              <div className="panel">
-                <h2>Mod store keys (optional)</h2>
-                <p className="page-sub" style={{ marginTop: 0 }}>
-                  CurseForge can also ship an embedded key in{' '}
-                  <code>src/main/mods/constants.ts</code> (
-                  <code>SPIRE_EMBEDDED_CURSEFORGE_API_KEY</code>) so everyone who builds Spire gets
-                  API browse / Download quickly without pasting. Settings override that embedded key.
-                  Nexus free Slow downloads still use the browser; Spire auto-imports from Downloads
-                  (or use Mod Manager / nxm). Premium Nexus keys unlock Download quickly.
-                </p>
-                <label className="field">
-                  <span>CurseForge API key (optional — overrides embedded key)</span>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={cfKey}
-                    onChange={(e) => setCfKey(e.target.value)}
-                    placeholder="Leave empty to use Spire’s embedded key if set"
-                  />
-                </label>
-                <label className="field">
-                  <span>Nexus Mods API key (optional — Premium for Download quickly)</span>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={nexusKey}
-                    onChange={(e) => setNexusKey(e.target.value)}
-                    placeholder="Premium accounts: enables CDN one-click"
-                  />
-                </label>
-                <div className="row">
-                  <button
-                    className="btn btn-primary"
-                    type="button"
-                    onClick={() => void onSaveCredentials()}
-                  >
-                    Save
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    type="button"
-                    onClick={() => void onClearCredentials()}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>Updates</h2>
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={settings?.checkForUpdates ?? true}
-                    onChange={(e) => void onToggleUpdates(e.target.checked)}
-                  />
-                  <span>Check for updates on launch</span>
-                </label>
-                <div className="row" style={{ marginTop: 8 }}>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => void window.spire.checkForUpdate().then(setUpdate)}
-                  >
-                    Check now
-                  </button>
-                  <span className="muted">v{appVersion || '…'}</span>
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>Appearance</h2>
-                <p className="muted">Applies to the main window, manage sidebar, and run log.</p>
-
-                <div className="appearance-section">
-                  <h3>Color theme</h3>
-                  <span className="muted">Dark, light, and high-contrast palettes.</span>
-                  <div className="theme-grid">
-                    {THEME_OPTIONS.map((opt) => {
-                      const selected = normalizeTheme(settings?.theme) === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`theme-card theme-preview-${opt.id}${selected ? ' selected' : ''}`}
-                          onClick={() => void onThemeChange(opt.id)}
-                        >
-                          <span className="theme-swatches" aria-hidden>
-                            <span className="swatch swatch-bg" />
-                            <span className="swatch swatch-nav" />
-                            <span className="swatch swatch-accent" />
-                          </span>
-                          <strong>{opt.label}</strong>
-                          <span className="muted">{opt.blurb}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div className="appearance-section">
-                  <h3>Readability</h3>
-                  <span className="muted">Type size and spacing across the app.</span>
-                  <div className="option-grid">
-                    {DENSITY_OPTIONS.map((opt) => {
-                      const selected = normalizeDensity(settings?.density) === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`option-card${selected ? ' selected' : ''}`}
-                          onClick={() => void onDensityChange(opt.id)}
-                        >
-                          <strong>{opt.label}</strong>
-                          <span className="muted">{opt.blurb}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div className="appearance-section">
-                  <h3>Home layout</h3>
-                  <span className="muted">How instances are arranged on the home screen.</span>
-                  <div className="option-grid">
-                    {HOME_LAYOUT_OPTIONS.map((opt) => {
-                      const selected = normalizeHomeLayout(settings?.homeLayout) === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`option-card${selected ? ' selected' : ''}`}
-                          onClick={() => void onHomeLayoutChange(opt.id)}
-                        >
-                          <strong>{opt.label}</strong>
-                          <span className="muted">{opt.blurb}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>Data folder</h2>
-                <div className="path-row">
-                  <code title={dataInfo?.spireRoot}>{dataInfo?.spireRoot ?? '…'}</code>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => void window.spire.openSpireDataFolder()}
-                  >
-                    Open
-                  </button>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => void window.spire.openLogsFolder()}
-                  >
-                    Logs
-                  </button>
-                </div>
-                <p className="muted" style={{ marginTop: 8 }}>
-                  Errors and failed downloads: <code>logs/spire-YYYY-MM-DD.log</code>. Play output:{' '}
-                  <code>logs/runs/</code>.
-                </p>
-                {dataInfo?.gameRoot ? (
-                  <p className="muted" style={{ marginTop: 8 }}>
-                    Game packages: <code>{dataInfo.gameRoot}</code>
-                  </p>
-                ) : null}
-              </div>
-            </div>
+          {view === 'settings' && settings ? (
+            <SettingsView
+              settings={settings}
+              status={status}
+              dataInfo={dataInfo}
+              hytaleAuth={hytaleAuth}
+              appVersion={appVersion}
+              update={update}
+              cfKey={cfKey}
+              nexusKey={nexusKey}
+              onCfKeyChange={setCfKey}
+              onNexusKeyChange={setNexusKey}
+              onSettings={setSettings}
+              onStatus={setStatus}
+              onHytaleAuth={setHytaleAuth}
+              onUpdate={setUpdate}
+              onToast={setToast}
+              onOpenInstall={() => setView('versions')}
+              onThemeChange={onThemeChange}
+              onDensityChange={onDensityChange}
+              onHomeLayoutChange={onHomeLayoutChange}
+            />
           ) : view === 'versions' ? (
             <VersionsView
               onToast={setToast}
@@ -554,71 +312,20 @@ export default function App(): React.JSX.Element {
               }}
             />
           ) : (
-            <div className="instance-view">
-              <div className="group-header">
-                <div className="group-label">Instances</div>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  disabled={busy}
-                  onClick={openCreateDialog}
-                >
-                  Add Instance
-                </button>
-              </div>
-              {instances.length === 0 ? (
-                <div className="empty-state">
-                  <p style={{ margin: '0 0 8px', color: 'var(--ink)', fontWeight: 600 }}>
-                    No instances yet
-                  </p>
-                  <p style={{ margin: '0 0 14px' }}>
-                    Create a profile, then install the full client under Install (or point Settings
-                    at an official install).
-                  </p>
-                  <div className="row">
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      disabled={busy}
-                      onClick={openCreateDialog}
-                    >
-                      Add Instance
-                    </button>
-                    <button className="btn" type="button" onClick={() => setView('versions')}>
-                      Install
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className={`instance-grid${
-                    normalizeHomeLayout(settings?.homeLayout) === 'list' ? ' layout-list' : ''
-                  }`}
-                >
-                  {instances.map((instance) => (
-                    <button
-                      key={instance.id}
-                      type="button"
-                      className={`instance-card${active?.id === instance.id ? ' selected' : ''}`}
-                      onClick={() => void selectInstance(instance.id)}
-                      onDoubleClick={() => {
-                        void selectInstance(instance.id).then(() => void onLaunch(instance.id))
-                      }}
-                      onContextMenu={(e) => openInstanceMenu(e, instance)}
-                    >
-                      <img className="instance-icon" src={spireLogo} alt="" />
-                      <span className="instance-card-body">
-                        <span className="instance-card-name">{instance.name}</span>
-                        <span className="instance-card-meta muted">
-                          {instance.channel}
-                          {instance.gameVersion ? ` · ${instance.gameVersion}` : ''}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <InstanceBrowser
+              instances={instances}
+              groups={settings?.instanceGroups ?? []}
+              activeId={active?.id ?? null}
+              homeLayout={normalizeHomeLayout(settings?.homeLayout)}
+              busy={busy}
+              onSelect={(id) => void selectInstance(id)}
+              onLaunch={(id) => void onLaunch(id)}
+              onContextMenu={openInstanceMenu}
+              onCreateInstance={openCreateDialog}
+              onChanged={refresh}
+              onToast={setToast}
+              onOpenInstall={() => setView('versions')}
+            />
           )}
         </main>
 
@@ -635,7 +342,9 @@ export default function App(): React.JSX.Element {
                   : 'Set install path or pin a downloaded version'
               }
             >
-              <span className="icon">▶</span>
+              <span className="icon">
+                <ActionIcon name="launch" />
+              </span>
               Launch
             </button>
             <button
@@ -647,7 +356,9 @@ export default function App(): React.JSX.Element {
                 void window.spire.openManageWindow(active.id)
               }}
             >
-              <span className="icon">✎</span>
+              <span className="icon">
+                <ActionIcon name="edit" />
+              </span>
               Edit
             </button>
             <button
@@ -659,7 +370,9 @@ export default function App(): React.JSX.Element {
                 void window.spire.openManageWindow(active.id, 'mods')
               }}
             >
-              <span className="icon">▣</span>
+              <span className="icon">
+                <ActionIcon name="mods" />
+              </span>
               Mods
             </button>
             <button
@@ -668,7 +381,9 @@ export default function App(): React.JSX.Element {
               disabled={!active}
               onClick={() => active && void window.spire.openInstanceFolder(active.id)}
             >
-              <span className="icon">📁</span>
+              <span className="icon">
+                <ActionIcon name="folder" />
+              </span>
               Folder
             </button>
             <button
@@ -677,7 +392,9 @@ export default function App(): React.JSX.Element {
               disabled={!active || busy}
               onClick={() => void onDelete()}
             >
-              <span className="icon">✕</span>
+              <span className="icon">
+                <ActionIcon name="delete" />
+              </span>
               Delete
             </button>
           </aside>

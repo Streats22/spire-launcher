@@ -221,6 +221,31 @@ export default function ManageWindow({
     }
   }
 
+  async function applyModSetToSaves(): Promise<void> {
+    if (!activeId) return
+    setBusy(true)
+    try {
+      const result = await window.spire.applyModSetToSaves(activeId)
+      if (result.saves === 0) {
+        setToast('No saves yet — create a world in Hytale (via Spire Play) first')
+      } else if (result.modCount === 0) {
+        setToast(`Checked ${result.saves} save(s) — no enabled mods to apply`)
+      } else if (result.updated === 0) {
+        setToast(
+          `All ${result.saves} save(s) already have your ${result.modCount} enabled mod(s)`
+        )
+      } else {
+        setToast(
+          `Applied ${result.modCount} mod(s) to ${result.updated} of ${result.saves} save(s)`
+        )
+      }
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function editServer(server: ServerEntry): void {
     setServerDraft({
       id: server.id,
@@ -281,6 +306,13 @@ export default function ManageWindow({
     { id: 'logs', label: 'Logs', hint: 'Run output' }
   ]
 
+  const fillBody =
+    tab === 'mods' ||
+    tab === 'prefabs' ||
+    tab === 'bootstrap' ||
+    tab === 'translations' ||
+    (tab === 'worlds' && worldsView === 'download')
+
   return (
     <div className="popup-shell manage-shell">
       <header className="popup-header">
@@ -319,7 +351,7 @@ export default function ManageWindow({
           ))}
         </nav>
 
-        <main className="popup-body">
+        <main className={`popup-body${fillBody ? ' popup-body-fill' : ''}`}>
           {tab === 'profile' && activeId ? (
           <ProfilesView
             instances={instances}
@@ -441,21 +473,44 @@ export default function ManageWindow({
             <div className="group-header">
               <div>
                 <h1 className="page-title">Worlds</h1>
-                <p className="page-sub">Create, rename, duplicate, delete, or download world packs.</p>
+                <p className="page-sub">
+                  Manage this profile’s Saves folder. Full world options (seed, generation, etc.)
+                  live in Hytale’s Create World — Spire Create only makes a basic save stub.
+                </p>
               </div>
-              <button
-                className="btn btn-primary"
-                type="button"
-                onClick={() => setWorldsView('download')}
-              >
-                Download
-              </button>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy || !activeId || worlds.length === 0}
+                  onClick={() => void applyModSetToSaves()}
+                  title="Write Spire’s enabled mods into every save’s config.json"
+                >
+                  Apply mod set to saves
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={() => setWorldsView('download')}
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+            <div className="wizard-callout worlds-mod-callout">
+              <p className="wizard-note">
+                <strong>Mods and new worlds.</strong> Hytale’s Create World screen starts with
+                mods unchecked — Spire can’t flip those checkboxes. Launch with Play, create the
+                world in-game (even if boxes stay off), and Spire will turn your enabled mods on
+                in that save afterward. Use <em>Apply mod set to saves</em> anytime to sync
+                existing worlds after you install or toggle mods.
+              </p>
             </div>
             <div className="row" style={{ marginBottom: 12 }}>
               <input
                 value={newWorldName}
                 onChange={(e) => setNewWorldName(e.target.value)}
-                placeholder="New world name"
+                placeholder="New world name (basic stub — prefer Create in Hytale)"
                 style={{ flex: 1, minWidth: 160 }}
               />
               <button

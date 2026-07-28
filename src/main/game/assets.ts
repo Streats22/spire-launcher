@@ -349,39 +349,13 @@ async function downloadToFile(
   return hash.digest('hex')
 }
 
-/** Full Wharf client + JRE install (preferred). Falls back to game-assets zip if patches deny access. */
+/**
+ * Full Wharf client + JRE install.
+ * Does not fall back to the game-assets zip — that package has no Client/JRE and previously
+ * looked like a successful install while leaving the instance unplayable.
+ */
 export async function downloadChannel(channel: HytalePatchline): Promise<HytaleDownloadResult> {
-  const result = await installFullChannel(channel)
-  if (result.ok) return result
-
-  const denied = /no access to the|no access to this patchline|PatchlineAccessError/i.test(
-    result.message
-  )
-  if (!denied) return result
-
-  emitProgress({
-    phase: 'resolving',
-    channel,
-    message:
-      'Client patchline blocked for this account — trying official game-assets package instead…'
-  })
-
-  const zip = await downloadAssetsZip(channel)
-  if (zip.ok) {
-    return {
-      ...zip,
-      message: zip.clientMissing
-        ? `${zip.message} Full Client Wharf patches need a licensed account with patchline access — use Release, another account, or the official launcher.`
-        : `Patchline access was limited; installed game-assets package instead. ${zip.message}`
-    }
-  }
-
-  return {
-    ok: false,
-    message:
-      `${result.message} Also couldn’t download game-assets (${zip.message}). ` +
-      `Sign in with a licensed Hytale account that can see this channel.`
-  }
+  return installFullChannel(channel)
 }
 
 /** Repair = force re-apply from build 0. */

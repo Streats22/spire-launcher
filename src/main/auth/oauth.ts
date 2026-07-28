@@ -1,6 +1,8 @@
 import {
   DOWNLOADER_CLIENT_ID,
   DOWNLOADER_SCOPE,
+  LAUNCHER_CLIENT_ID,
+  LAUNCHER_SCOPE,
   OAUTH_DEVICE_AUTH,
   OAUTH_TOKEN,
   USER_AGENT
@@ -19,11 +21,20 @@ export interface DeviceCodeResponse {
 interface TokenResponse {
   access_token: string
   refresh_token?: string
+  id_token?: string
   token_type?: string
   expires_in?: number
   scope?: string
   error?: string
   error_description?: string
+}
+
+/** True when tokens can call `/patches/...` (full Client + JRE). */
+export function hasLauncherAccess(tokens: StoredOAuthTokens | null | undefined): boolean {
+  if (!tokens) return false
+  if (tokens.clientId === LAUNCHER_CLIENT_ID) return true
+  if (tokens.scope && /\bauth:launcher\b/.test(tokens.scope)) return true
+  return false
 }
 
 function formBody(data: Record<string, string>): string {
@@ -53,6 +64,7 @@ async function postForm(url: string, data: Record<string, string>): Promise<Toke
   return json
 }
 
+/** @deprecated Prefer PKCE launcher login — device flow cannot install the full client. */
 export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
   const json = await postForm(OAUTH_DEVICE_AUTH, {
     client_id: DOWNLOADER_CLIENT_ID,
@@ -71,20 +83,29 @@ export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
   }
 }
 
-function toStored(json: TokenResponse, previous?: StoredOAuthTokens | null): StoredOAuthTokens {
+function toStored(
+  json: TokenResponse,
+  previous?: StoredOAuthTokens | null,
+  clientId?: string
+): StoredOAuthTokens {
   const expiresAt =
     typeof json.expires_in === 'number' ? Date.now() + json.expires_in * 1000 : previous?.expiresAt ?? null
+  const resolvedClient = clientId ?? previous?.clientId ?? LAUNCHER_CLIENT_ID
+  const defaultScope =
+    resolvedClient === LAUNCHER_CLIENT_ID ? LAUNCHER_SCOPE : DOWNLOADER_SCOPE
   return {
     accessToken: json.access_token,
     refreshToken: json.refresh_token ?? previous?.refreshToken ?? null,
+    idToken: json.id_token ?? previous?.idToken ?? null,
     tokenType: json.token_type ?? 'Bearer',
-    scope: json.scope ?? previous?.scope ?? DOWNLOADER_SCOPE,
+    scope: json.scope ?? previous?.scope ?? defaultScope,
     expiresAt,
-    clientId: DOWNLOADER_CLIENT_ID,
+    clientId: resolvedClient,
     obtainedAt: new Date().toISOString()
   }
 }
 
+/** @deprecated Prefer PKCE launcher login. */
 export async function pollDeviceToken(
   deviceCode: string,
   intervalSec: number,
@@ -116,7 +137,7 @@ export async function pollDeviceToken(
     })
 
     if (json.access_token) {
-      return toStored(json)
+      return toStored(json, null, DOWNLOADER_CLIENT_ID)
     }
 
     const err = json.error
@@ -139,15 +160,16 @@ export async function refreshAccessToken(tokens: StoredOAuthTokens): Promise<Sto
   if (!tokens.refreshToken) {
     throw new Error('No refresh token — sign in again.')
   }
+  const clientId = tokens.clientId || LAUNCHER_CLIENT_ID
   const json = await postForm(OAUTH_TOKEN, {
-    client_id: tokens.clientId || DOWNLOADER_CLIENT_ID,
+    client_id: clientId,
     grant_type: 'refresh_token',
     refresh_token: tokens.refreshToken
   })
   if (!json.access_token) {
     throw new Error(json.error_description || json.error || 'Token refresh failed.')
   }
-  const stored = toStored(json, tokens)
+  const stored = toStored(json, tokens, clientId)
   saveTokens(stored)
   return stored
 }

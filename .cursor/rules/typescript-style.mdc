@@ -42,9 +42,11 @@ Apply PSR-12’s consistency goals to TypeScript/React. Prefer this repo’s est
 
 ## React
 
-- Function components only
+- Function components only (no React class components)
+- Domain / main-process logic: prefer classes per `oop.mdc`
 - Hooks at top level; extract repeated effect/state patterns into small hooks or shared helpers
 - Keep JSX readable; extract repeated UI blocks into components when used twice+
+- Use `errorMessage()` from `src/shared/errors.ts` instead of repeating `err instanceof Error ? …`
 
 ```typescript
 // ❌

@@ -3,8 +3,10 @@ import type {
   CreateInstanceOptions,
   GameVersionInfo,
   HytaleAuthStatus,
+  HytaleDownloadProgress,
   InstanceChannel
 } from '../../shared/types'
+import DownloadProgressPanel from './DownloadProgressPanel'
 
 interface CreateInstanceDialogProps {
   open: boolean
@@ -39,6 +41,7 @@ export default function CreateInstanceDialog({
   const [versionsError, setVersionsError] = useState<string | null>(null)
   const [downloadAfter, setDownloadAfter] = useState(false)
   const [localBusy, setLocalBusy] = useState(false)
+  const [progress, setProgress] = useState<HytaleDownloadProgress | null>(null)
 
   const signedIn = Boolean(auth?.signedIn && auth.sessionValid)
 
@@ -71,6 +74,7 @@ export default function CreateInstanceDialog({
     setVersions([])
     setVersionsError(null)
     setDownloadAfter(false)
+    setProgress(null)
     void refreshVersions('release')
   }, [open, refreshVersions])
 
@@ -78,6 +82,12 @@ export default function CreateInstanceDialog({
     if (!open) return
     void refreshVersions(channel)
   }, [channel, open, refreshVersions])
+
+  useEffect(() => {
+    if (!open) return
+    void window.spire.getHytaleDownloadProgress().then(setProgress)
+    return window.spire.onHytaleDownloadProgress(setProgress)
+  }, [open])
 
   if (!open) return null
 
@@ -218,9 +228,9 @@ export default function CreateInstanceDialog({
             {!signedIn ? (
               <div className="wizard-callout">
                 <p>
-                  Sign in with your official Hytale account to list the current{' '}
-                  <code>{channel}</code> build from Hypixel’s game-assets API. You can still create
-                  this profile and download later under Install.
+                  Sign in with your official Hytale account (browser launcher login) to list the
+                  current <code>{channel}</code> build and install the full Client + JRE. You can
+                  still create this profile and download later under Install.
                 </p>
                 <div className="row">
                   <button
@@ -233,6 +243,26 @@ export default function CreateInstanceDialog({
                   </button>
                   <button
                     className="btn"
+                    type="button"
+                    disabled={creating}
+                    onClick={() => {
+                      onClose()
+                      onOpenInstall()
+                    }}
+                  >
+                    Open Install
+                  </button>
+                </div>
+              </div>
+            ) : auth?.canInstallClient === false ? (
+              <div className="wizard-callout">
+                <p>
+                  This saved login is downloader-only and cannot install the playable Client + JRE.
+                  Open Install, remove the account, and sign in again.
+                </p>
+                <div className="row">
+                  <button
+                    className="btn btn-primary"
                     type="button"
                     disabled={creating}
                     onClick={() => {
@@ -300,12 +330,14 @@ export default function CreateInstanceDialog({
                 <input
                   type="checkbox"
                   checked={downloadAfter}
-                  disabled={creating || !signedIn}
+                  disabled={creating || !signedIn || auth?.canInstallClient === false}
                   onChange={(e) => setDownloadAfter(e.target.checked)}
                 />
                 <span>Install full client (Wharf patches + JRE) after creating</span>
               </label>
             ) : null}
+
+            <DownloadProgressPanel progress={progress} />
 
             <div className="row modal-actions">
               <button
@@ -322,7 +354,13 @@ export default function CreateInstanceDialog({
                 disabled={creating}
                 onClick={() => void onCreate()}
               >
-                {downloadAfter ? 'Create & install' : 'Create'}
+                {creating && downloadAfter
+                  ? 'Installing…'
+                  : downloadAfter
+                    ? 'Create & install'
+                    : creating
+                      ? 'Creating…'
+                      : 'Create'}
               </button>
               <button className="btn" type="button" disabled={creating} onClick={onClose}>
                 Cancel

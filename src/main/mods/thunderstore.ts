@@ -1,6 +1,5 @@
 import { spawn } from 'child_process'
 import {
-  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -11,9 +10,8 @@ import {
 } from 'fs'
 import { tmpdir } from 'os'
 import { basename, join } from 'path'
-import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
 import type {
+  ModDependencyRef,
   ModDetails,
   ModFileInfo,
   ModListing,
@@ -21,6 +19,8 @@ import type {
   ModSearchResult
 } from '../../shared/types'
 import { SPIRE_USER_AGENT, THUNDERSTORE_HYTALE_API, THUNDERSTORE_HYTALE_BROWSE_URL } from './constants'
+import { beginContentDownload, emitContentProgress } from './contentProgress'
+import { downloadFileWithProgress } from './downloadFile'
 import { modsDir } from './manifest'
 
 class ThunderstoreError extends Error {
@@ -43,6 +43,8 @@ interface TsVersion {
   is_active?: boolean
   uuid4: string
   file_size?: number
+  /** e.g. `["Serilum-Hybrid-1.7.0"]` — owner-name[-version] */
+  dependencies?: string[]
 }
 
 interface TsPackage {
@@ -115,8 +117,67 @@ function mapVersions(pkg: TsPackage): ModFileInfo[] {
       fileLength: v.file_size ?? 0,
       downloadUrl: v.download_url,
       primary: index === 0,
-      releaseType: 'release'
+      releaseType: 'release',
+      dependencies: mapTsDependencies(v.dependencies)
     }))
+}
+
+function resolveThunderstoreDepPackage(
+  packages: TsPackage[],
+  depSpec: string
+): TsPackage | null {
+  const spec = depSpec.trim()
+  if (!spec) return null
+  const exact = packages.find((p) => p.full_name === spec)
+  if (exact) return exact
+  // Prefer longest full_name prefix match for `Owner-Name-1.2.3`
+  const matches = packages
+    .filter((p) => spec === p.full_name || spec.startsWith(`${p.full_name}-`))
+    .sort((a, b) => b.full_name.length - a.full_name.length)
+  return matches[0] ?? null
+}
+
+function mapTsDependencies(deps: string[] | undefined): ModDependencyRef[] {
+  if (!deps?.length) return []
+  // Resolution needs the package index — filled in listThunderstoreAutoDependencies.
+  return deps
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((modId) => ({
+      source: 'thunderstore' as const,
+      modId,
+      relation: 'required' as const
+    }))
+}
+
+/** Resolve Thunderstore version dependency strings to installable package ids. */
+export async function listThunderstoreAutoDependencies(
+  idOrFullName: string,
+  fileId?: string
+): Promise<ModDependencyRef[]> {
+  const packages = await loadPackages()
+  const pkg = findPackage(packages, idOrFullName)
+  const version =
+    (fileId ? (pkg.versions ?? []).find((v) => v.uuid4 === fileId) : null) ??
+    latestVersion(pkg)
+  const specs = version?.dependencies ?? []
+  const out: ModDependencyRef[] = []
+  const seen = new Set<string>()
+  for (const spec of specs) {
+    const depPkg = resolveThunderstoreDepPackage(packages, spec)
+    if (!depPkg) continue
+    // Skip common mod managers listed as deps
+    const name = depPkg.full_name.toLowerCase()
+    if (name.includes('r2modman') || name.includes('thunderstore-mod-manager')) continue
+    if (seen.has(depPkg.uuid4)) continue
+    seen.add(depPkg.uuid4)
+    out.push({
+      source: 'thunderstore',
+      modId: depPkg.uuid4,
+      relation: 'required'
+    })
+  }
+  return out
 }
 
 function findPackage(packages: TsPackage[], idOrFullName: string): TsPackage {
@@ -246,18 +307,19 @@ export async function installThunderstorePackage(
   const extractDir = join(staging, 'out')
 
   try {
-    const res = await fetch(file.downloadUrl, {
-      headers: { 'User-Agent': SPIRE_USER_AGENT },
-      redirect: 'follow'
+    beginContentDownload('mods', listing.name)
+    emitContentProgress({
+      phase: 'downloading',
+      bytesReceived: 0,
+      bytesTotal: 0,
+      message: `Downloading “${listing.name}”…`
     })
-    if (!res.ok || !res.body) {
-      throw new ThunderstoreError(`Download failed (${res.status})`)
-    }
-    await pipeline(
-      Readable.fromWeb(res.body as import('stream/web').ReadableStream),
-      createWriteStream(zipPath)
-    )
+    await downloadFileWithProgress(file.downloadUrl, zipPath)
 
+    emitContentProgress({
+      phase: 'extracting',
+      message: `Extracting “${listing.name}”…`
+    })
     await extractZip(zipPath, extractDir)
     const jars = collectJars(extractDir)
     const destDir = modsDir(instanceId)
@@ -279,7 +341,15 @@ export async function installThunderstorePackage(
       renameSync(zipPath, dest)
     }
 
+    emitContentProgress({
+      phase: 'done',
+      message: `Installed “${listing.name}”`
+    })
     return { fileName: installedName, fileId: file.fileId, listing }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    emitContentProgress({ phase: 'error', message })
+    throw err
   } finally {
     try {
       rmSync(staging, { recursive: true, force: true })

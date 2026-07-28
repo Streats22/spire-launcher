@@ -15,6 +15,8 @@ import { DOWNLOADER_CLIENT_ID } from './constants'
 export interface StoredOAuthTokens {
   accessToken: string
   refreshToken: string | null
+  /** OIDC id_token when returned (launcher PKCE) — useful for username claims. */
+  idToken?: string | null
   tokenType: string
   scope: string | null
   /** Epoch ms when access token expires */

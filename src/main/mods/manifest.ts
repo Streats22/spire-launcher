@@ -1,5 +1,4 @@
 import {
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -8,11 +7,13 @@ import {
   writeFileSync
 } from 'fs'
 import { join } from 'path'
-import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
 import type { InstalledMod, ModSource } from '../../shared/types'
 import { ensureInstanceLayout, getInstancePath } from '../instances'
-import { SPIRE_USER_AGENT } from './constants'
+import {
+  beginContentDownload,
+  emitContentProgress
+} from './contentProgress'
+import { downloadFileWithProgress } from './downloadFile'
 
 function manifestPath(instanceId: string): string {
   return join(getInstancePath(instanceId), 'mods', 'spire-mods.json')
@@ -136,26 +137,32 @@ export async function downloadToModsFolder(
   instanceId: string,
   url: string,
   fileName: string,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  displayName?: string
 ): Promise<string> {
   const dir = modsDir(instanceId)
   const safeName = fileName.replace(/[\\/:*?"<>|]/g, '_')
   const dest = join(dir, safeName)
+  const label = displayName || safeName
 
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': SPIRE_USER_AGENT,
-      ...headers
-    },
-    redirect: 'follow'
+  beginContentDownload('mods', label)
+  emitContentProgress({
+    phase: 'downloading',
+    bytesReceived: 0,
+    bytesTotal: 0,
+    message: `Downloading “${label}”…`
   })
-
-  if (!res.ok || !res.body) {
-    throw new Error(`Download failed (${res.status})`)
+  try {
+    await downloadFileWithProgress(url, dest, headers)
+    emitContentProgress({
+      phase: 'done',
+      message: `Downloaded “${label}”`
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    emitContentProgress({ phase: 'error', message })
+    throw err
   }
-
-  const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
-  await pipeline(nodeStream, createWriteStream(dest))
   return dest
 }
 

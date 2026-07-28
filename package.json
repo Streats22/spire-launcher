@@ -98,7 +98,8 @@
       "installerHeader": "resources/installerHeader.bmp",
       "installerSidebar": "resources/installerSidebar.bmp",
       "uninstallerSidebar": "resources/installerSidebar.bmp",
-      "include": "resources/installer.nsh",
+      "include": "installer.nsh",
+      "runAfterFinish": true,
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "linux": {

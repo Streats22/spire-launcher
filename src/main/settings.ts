@@ -4,11 +4,13 @@ import { BrowserWindow } from 'electron'
 import type { LocalDataInfo, SpireSettings } from '../shared/types'
 import { SPIRE_EMBEDDED_CURSEFORGE_API_KEY } from './mods/constants'
 import {
-  defaultInstallGuesses,
+  detectBestGameInstall,
+  detectGameInstalls,
   getGameRoot,
   getInstancesRoot,
   getSettingsPath,
-  getSpireRoot
+  getSpireRoot,
+  resolveClientPath
 } from './paths'
 import { clearAllAccounts } from './auth/store'
 import { cancelLogin } from './auth/account'
@@ -32,10 +34,13 @@ const defaultSettings = (): SpireSettings => ({
   curseForgeApiKey: null,
   nexusApiKey: null,
   checkForUpdates: true,
+  openRunWindowOnLaunch: false,
+  minimizeOnLaunch: false,
   showModPhotos: true,
   theme: 'slate',
   density: 'comfortable',
-  homeLayout: 'grid'
+  homeLayout: 'grid',
+  instanceGroups: []
 })
 
 export function ensureSpireDirs(): void {
@@ -47,7 +52,7 @@ export function loadSettings(): SpireSettings {
   const path = getSettingsPath()
   if (!existsSync(path)) {
     const settings = defaultSettings()
-    const guess = defaultInstallGuesses().find((p) => existsSync(p))
+    const guess = detectBestGameInstall()
     if (guess) settings.gameInstallPath = guess
     saveSettings(settings)
     return settings
@@ -57,9 +62,66 @@ export function loadSettings(): SpireSettings {
     if (!THEME_IDS.has(String(raw.theme))) raw.theme = 'slate'
     if (!DENSITY_IDS.has(String(raw.density))) raw.density = 'comfortable'
     if (!HOME_LAYOUT_IDS.has(String(raw.homeLayout))) raw.homeLayout = 'grid'
-    return raw
+    if (!Array.isArray(raw.instanceGroups)) raw.instanceGroups = []
+    raw.instanceGroups = raw.instanceGroups
+      .filter((g) => g && typeof g.id === 'string' && typeof g.name === 'string')
+      .map((g, i) => ({
+        id: g.id,
+        name: String(g.name).trim() || 'Group',
+        sortIndex: typeof g.sortIndex === 'number' ? g.sortIndex : i
+      }))
+      .sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name))
+    return maybeAutofillInstallPath(raw)
   } catch {
     return defaultSettings()
+  }
+}
+
+/**
+ * If Settings has no install (or a dead path), adopt the best detected official install.
+ * Does not overwrite a path that still resolves a client.
+ */
+function maybeAutofillInstallPath(settings: SpireSettings): SpireSettings {
+  const current = settings.gameInstallPath
+  if (current && existsSync(current) && resolveClientPath(current)) {
+    return settings
+  }
+  const guess = detectBestGameInstall()
+  if (!guess || guess === current) return settings
+  const next = { ...settings, gameInstallPath: guess }
+  saveSettings(next)
+  return next
+}
+
+/**
+ * Scan likely Hytale folders. When `forceApply` is true (Detect button), always
+ * set Settings to the best match. Otherwise only fills in when unset/invalid.
+ */
+export function detectAndApplyGameInstall(forceApply = false): {
+  applied: boolean
+  path: string | null
+  detections: ReturnType<typeof detectGameInstalls>
+  settings: SpireSettings
+} {
+  const detections = detectGameInstalls()
+  const best = detections[0]?.path ?? null
+  let settings = loadSettings()
+  let applied = false
+
+  if (best) {
+    const current = settings.gameInstallPath
+    const currentOk = Boolean(current && existsSync(current) && resolveClientPath(current))
+    if ((forceApply || !currentOk) && current !== best) {
+      settings = updateSettings({ gameInstallPath: best })
+      applied = true
+    }
+  }
+
+  return {
+    applied,
+    path: best ?? settings.gameInstallPath,
+    detections,
+    settings
   }
 }
 

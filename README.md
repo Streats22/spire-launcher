@@ -46,13 +46,15 @@ npm run dist:linux
 Packaged installers use branded chrome:
 
 - **macOS DMG** — custom Finder window (`resources/dmg-background.png`) with drag-to-Applications
-- **Windows NSIS** — assisted setup wizard with Spire sidebar/header art (not one-click), desktop + Start Menu shortcuts
+- **Windows NSIS** — custom Spire wizard (`resources/installer.nsh` + `resources/nsis/theme.nsh`): nsDialogs welcome / options / finish pages with full-bleed bitmaps, dark-themed directory + progress, desktop shortcut toggle, Launch on finish
 
 Regenerate installer graphics after icon/theme changes:
 
 ```bash
 npm run generate:installer-assets
 ```
+
+Windows page art: `installerWelcome.bmp`, `installerOptions.bmp`, `installerFinish.bmp`, `installerUnwelcome.bmp` (plus header/sidebar for remaining MUI pages).
 
 ## Mod stores
 

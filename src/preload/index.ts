@@ -19,6 +19,7 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:updateSettings', patch),
   setGameInstallPath: (path) => ipcRenderer.invoke('spire:setGameInstallPath', path),
   pickGameInstallPath: () => ipcRenderer.invoke('spire:pickGameInstallPath'),
+  detectGameInstall: () => ipcRenderer.invoke('spire:detectGameInstall'),
   getInstallStatus: () => ipcRenderer.invoke('spire:getInstallStatus'),
   getLocalDataInfo: () => ipcRenderer.invoke('spire:getLocalDataInfo'),
   openSpireDataFolder: () => ipcRenderer.invoke('spire:openSpireDataFolder'),
@@ -34,6 +35,11 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:createInstance', options),
   updateInstance: (id, patch: InstancePatch) =>
     ipcRenderer.invoke('spire:updateInstance', id, patch),
+  organizeInstances: (items) => ipcRenderer.invoke('spire:organizeInstances', items),
+  createInstanceGroup: (name) => ipcRenderer.invoke('spire:createInstanceGroup', name),
+  renameInstanceGroup: (id, name) => ipcRenderer.invoke('spire:renameInstanceGroup', id, name),
+  deleteInstanceGroup: (id) => ipcRenderer.invoke('spire:deleteInstanceGroup', id),
+  reorderInstanceGroups: (ids) => ipcRenderer.invoke('spire:reorderInstanceGroups', ids),
   duplicateInstance: (id, newName) =>
     ipcRenderer.invoke('spire:duplicateInstance', id, newName),
   deleteInstance: (id) => ipcRenderer.invoke('spire:deleteInstance', id),
@@ -96,6 +102,8 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:deleteWorld', instanceId, worldId),
   openWorldFolder: (instanceId, worldId) =>
     ipcRenderer.invoke('spire:openWorldFolder', instanceId, worldId),
+  applyModSetToSaves: (instanceId) =>
+    ipcRenderer.invoke('spire:applyModSetToSaves', instanceId),
   listServers: (instanceId) => ipcRenderer.invoke('spire:listServers', instanceId),
   upsertServer: (instanceId, server: Partial<ServerEntry> & { name: string; address: string }) =>
     ipcRenderer.invoke('spire:upsertServer', instanceId, server),
@@ -144,6 +152,17 @@ const api: SpireApi = {
     }
     ipcRenderer.on('spire:hytaleDownloadProgress', listener)
     return () => ipcRenderer.removeListener('spire:hytaleDownloadProgress', listener)
+  },
+  getContentDownloadProgress: () => ipcRenderer.invoke('spire:getContentDownloadProgress'),
+  onContentDownloadProgress: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: import('../shared/types').ContentDownloadProgress
+    ): void => {
+      handler(progress)
+    }
+    ipcRenderer.on('spire:contentDownloadProgress', listener)
+    return () => ipcRenderer.removeListener('spire:contentDownloadProgress', listener)
   },
   onLogLine: (handler) => {
     const listener = (

@@ -4,20 +4,16 @@ import type {
   HytaleDeviceLogin,
   HytaleProfile
 } from '../../shared/types'
-import {
-  ACCOUNT_DATA,
-  ACCOUNTS_DEVICE_PAGE,
-  DOWNLOADER_CLIENT_ID,
-  SESSIONS,
-  USER_AGENT
-} from './constants'
+import { errorMessage } from '../../shared/errors'
+import { ACCOUNT_DATA, SESSIONS, USER_AGENT } from './constants'
+import { decodeJwtPayload, usernameFromToken } from './claims'
 import {
   getValidAccessToken,
   getValidAccessTokenOrNull,
-  pollDeviceToken,
-  requestDeviceCode,
+  hasLauncherAccess,
   withAuthRetry
 } from './oauth'
+import { cancelPkceLogin, startPkceLogin, waitPkceLogin } from './pkce'
 import {
   clearAllAccounts,
   createAccountWithTokens,
@@ -28,11 +24,12 @@ import {
   removeAccount,
   saveAccountMeta,
   setActiveAccount,
-  type StoredAccountMeta
+  type StoredAccountMeta,
+  type StoredOAuthTokens
 } from './store'
+import { logWarn } from '../logging'
 
 let loginAbort: AbortController | null = null
-let pendingDevice: { deviceCode: string; interval: number } | null = null
 
 export interface GameSessionTokens {
   sessionToken: string
@@ -60,34 +57,88 @@ async function authGet<T>(path: string, accessToken: string): Promise<T> {
   return JSON.parse(text) as T
 }
 
-interface ProfilesResponse {
-  profiles?: Array<{
-    uuid?: string
-    username?: string
-    name?: string
-    entitlements?: string[]
-  }>
+function asUuid(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return null
+  }
+  return trimmed
 }
 
-interface LauncherDataResponse {
-  profiles?: Array<{
-    uuid?: string
-    name?: string
-    entitlements?: string[]
-  }>
-  patchlines?: Record<string, unknown>
+function normalizeProfiles(raw: Array<Record<string, unknown>>): HytaleProfile[] {
+  const out: HytaleProfile[] = []
+  for (const p of raw) {
+    const uuid =
+      asUuid(p.uuid) ||
+      asUuid(p.id) ||
+      asUuid(p.profileUuid) ||
+      asUuid(p.profile_uuid) ||
+      asUuid(p.playerUuid) ||
+      asUuid(p.player_uuid)
+    if (!uuid) continue
+    const nameRaw =
+      (typeof p.username === 'string' && p.username.trim()) ||
+      (typeof p.name === 'string' && p.name.trim()) ||
+      (typeof p.displayName === 'string' && p.displayName.trim()) ||
+      uuid
+    const entitlements = Array.isArray(p.entitlements)
+      ? p.entitlements.filter((e): e is string => typeof e === 'string')
+      : []
+    out.push({ uuid, name: nameRaw, entitlements })
+  }
+  return out
 }
 
-function normalizeProfiles(
-  raw: Array<{ uuid?: string; username?: string; name?: string; entitlements?: string[] }>
-): HytaleProfile[] {
-  return raw
-    .filter((p) => p.uuid)
-    .map((p) => ({
-      uuid: p.uuid!,
-      name: p.name || p.username || p.uuid!,
-      entitlements: p.entitlements ?? []
-    }))
+function profilesFromUnknown(data: unknown): HytaleProfile[] {
+  if (!data || typeof data !== 'object') return []
+  const obj = data as Record<string, unknown>
+  if (Array.isArray(obj.profiles)) {
+    return normalizeProfiles(obj.profiles as Array<Record<string, unknown>>)
+  }
+  if (Array.isArray(data)) {
+    return normalizeProfiles(data as Array<Record<string, unknown>>)
+  }
+  const nested = obj.profile
+  if (nested && typeof nested === 'object') {
+    return normalizeProfiles([nested as Record<string, unknown>])
+  }
+  const single = normalizeProfiles([obj])
+  return single
+}
+
+function displayNameFromTokens(tokens: StoredOAuthTokens | null | undefined): string | null {
+  if (!tokens) return null
+  return usernameFromToken(tokens.idToken) || usernameFromToken(tokens.accessToken)
+}
+
+/**
+ * Prefer the selected Hytale *game profile* name (in-game identity) over the
+ * OAuth account username (e.g. email local-part / Hypixel login).
+ */
+function resolveAccountDisplayName(
+  meta: StoredAccountMeta,
+  tokens?: StoredOAuthTokens | null
+): string | null {
+  const selected =
+    meta.profiles.find((p) => p.uuid === meta.selectedProfileUuid) || meta.profiles[0] || null
+  const profileName = selected?.name?.trim() || null
+  if (profileName && !asUuid(profileName)) return profileName
+
+  if (meta.displayName && !asUuid(meta.displayName)) {
+    // Keep stored name only if it matches a known profile (avoid sticky OAuth login)
+    const matchesProfile = meta.profiles.some((p) => p.name === meta.displayName)
+    if (matchesProfile || meta.profiles.length === 0) return meta.displayName
+  }
+
+  return displayNameFromTokens(tokens) || profileName || meta.displayName || null
+}
+
+function platformOsArch(): { os: string; arch: string } {
+  const os =
+    process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux'
+  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64'
+  return { os, arch }
 }
 
 export async function refreshAccountInfo(
@@ -96,26 +147,50 @@ export async function refreshAccountInfo(
   const id = accountId ?? getActiveAccountId()
   return withAuthRetry(async (accessToken) => {
     let profiles: HytaleProfile[] = []
+    const { os, arch } = platformOsArch()
+    const attempts: Array<{ path: string; label: string }> = [
+      // Launcher OAuth cannot call get-profiles (403) — prefer launcher-data first.
+      {
+        path: `/my-account/get-launcher-data?os=${encodeURIComponent(os)}&arch=${encodeURIComponent(arch)}`,
+        label: 'get-launcher-data'
+      },
+      {
+        path: `/launcher-data?os=${encodeURIComponent(os)}&arch=${encodeURIComponent(arch)}`,
+        label: 'launcher-data'
+      },
+      { path: '/my-account/game-profile', label: 'game-profile' },
+      { path: '/my-account/get-profiles', label: 'get-profiles' }
+    ]
 
-    try {
-      const data = await authGet<ProfilesResponse>('/my-account/get-profiles', accessToken)
-      profiles = normalizeProfiles(data.profiles ?? [])
-    } catch {
-      // Downloader scope may not expose get-profiles; try launcher-data.
+    for (const attempt of attempts) {
+      if (profiles.length > 0) break
+      try {
+        const data = await authGet<unknown>(attempt.path, accessToken)
+        profiles = profilesFromUnknown(data)
+        if (profiles.length === 0) {
+          logWarn('auth', `${attempt.label}: ok but no profiles in response`)
+        }
+      } catch (err) {
+        logWarn('auth', `${attempt.label} failed: ${errorMessage(err)}`)
+      }
     }
 
+    // Last resort: UUID from access / id token claims (not always a game profile).
     if (profiles.length === 0) {
-      try {
-        const os =
-          process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux'
-        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64'
-        const data = await authGet<LauncherDataResponse>(
-          `/launcher-data?os=${encodeURIComponent(os)}&arch=${encodeURIComponent(arch)}`,
-          accessToken
-        )
-        profiles = normalizeProfiles(data.profiles ?? [])
-      } catch {
-        // Profile endpoints optional for download-only sessions.
+      const tokens = loadTokens(id)
+      const claims =
+        decodeJwtPayload(tokens?.accessToken) || decodeJwtPayload(tokens?.idToken ?? null)
+      const claimUuid =
+        asUuid(claims?.hytale_profile_uuid) ||
+        asUuid(claims?.profile_uuid) ||
+        asUuid(claims?.uuid) ||
+        asUuid(claims?.sub)
+      if (claimUuid) {
+        const name =
+          displayNameFromTokens(tokens) ||
+          (typeof claims?.preferred_username === 'string' ? claims.preferred_username : claimUuid)
+        profiles = [{ uuid: claimUuid, name: String(name), entitlements: [] }]
+        logWarn('auth', `Using profile UUID from token claims (${claimUuid})`)
       }
     }
 
@@ -124,10 +199,10 @@ export async function refreshAccountInfo(
       (prev.selectedProfileUuid && profiles.find((p) => p.uuid === prev.selectedProfileUuid)?.uuid) ||
       profiles[0]?.uuid ||
       null
-    const displayName =
-      profiles.find((p) => p.uuid === selected)?.name ??
-      prev.displayName ??
-      (profiles[0]?.name ?? null)
+    const profileName =
+      profiles.find((p) => p.uuid === selected)?.name ?? profiles[0]?.name ?? null
+    const fromToken = displayNameFromTokens(loadTokens(id))
+    const displayName = profileName || fromToken || prev.displayName || null
 
     const meta: StoredAccountMeta = {
       selectedProfileUuid: selected,
@@ -140,10 +215,26 @@ export async function refreshAccountInfo(
   })
 }
 
-export async function createGameSession(): Promise<GameSessionTokens | null> {
-  const meta = loadAccountMeta()
-  const uuid = meta.selectedProfileUuid || meta.profiles[0]?.uuid
-  if (!uuid) return null
+export async function createGameSession(): Promise<GameSessionTokens> {
+  let meta = loadAccountMeta()
+  let uuid = meta.selectedProfileUuid || meta.profiles[0]?.uuid || null
+
+  if (!uuid) {
+    try {
+      meta = await refreshAccountInfo()
+      uuid = meta.selectedProfileUuid || meta.profiles[0]?.uuid || null
+    } catch (err) {
+      throw new Error(
+        `Could not load Hytale profiles: ${errorMessage(err)}. Sign in again under Install.`
+      )
+    }
+  }
+
+  if (!uuid) {
+    throw new Error(
+      'No Hytale game profile on this account. Open Install, use Refresh, or sign out and sign in again.'
+    )
+  }
 
   return withAuthRetry(async (accessToken) => {
     const res = await fetch(`${SESSIONS}/game-session/new`, {
@@ -159,9 +250,9 @@ export async function createGameSession(): Promise<GameSessionTokens | null> {
     const text = await res.text()
     if (res.status === 401) throw new Error('unauthorized')
     if (!res.ok) {
-      return null
+      throw new Error(`Game session HTTP ${res.status}: ${text.slice(0, 180)}`)
     }
-    const json = JSON.parse(text) as {
+    let json: {
       sessionToken?: string
       identityToken?: string
       session_token?: string
@@ -169,12 +260,19 @@ export async function createGameSession(): Promise<GameSessionTokens | null> {
       expiresAt?: string
       expires_at?: string
     }
+    try {
+      json = JSON.parse(text) as typeof json
+    } catch {
+      throw new Error('Game session response was not JSON.')
+    }
     const session: GameSessionTokens = {
       sessionToken: json.sessionToken || json.session_token || '',
       identityToken: json.identityToken || json.identity_token || '',
       expiresAt: json.expiresAt || json.expires_at || null
     }
-    if (!session.sessionToken || !session.identityToken) return null
+    if (!session.sessionToken || !session.identityToken) {
+      throw new Error('Game session response missing session or identity token.')
+    }
     cachedSession = session
     return session
   })
@@ -185,13 +283,16 @@ export function getCachedGameSession(): GameSessionTokens | null {
 }
 
 function buildAccountSummaries(): HytaleAccountSummary[] {
-  return listStoredAccounts().map((a) => ({
-    id: a.id,
-    displayName: a.meta.displayName,
-    profileUuid: a.meta.selectedProfileUuid,
-    profiles: a.meta.profiles,
-    hasRefreshToken: Boolean(loadTokens(a.id)?.refreshToken)
-  }))
+  return listStoredAccounts().map((a) => {
+    const tokens = loadTokens(a.id)
+    return {
+      id: a.id,
+      displayName: resolveAccountDisplayName(a.meta, tokens),
+      profileUuid: a.meta.selectedProfileUuid,
+      profiles: a.meta.profiles,
+      hasRefreshToken: Boolean(tokens?.refreshToken)
+    }
+  })
 }
 
 export async function getAuthStatus(): Promise<HytaleAuthStatus> {
@@ -210,6 +311,7 @@ export async function getAuthStatus(): Promise<HytaleAuthStatus> {
       accessExpiresAt: null,
       hasRefreshToken: false,
       clientId: null,
+      canInstallClient: false,
       activeAccountId: null,
       accounts
     }
@@ -222,68 +324,94 @@ export async function getAuthStatus(): Promise<HytaleAuthStatus> {
     sessionValid = false
   }
 
+  let resolvedMeta = meta
+  // Refresh when we lack profiles, or only have an OAuth login name (no game profile yet).
+  const needsProfileRefresh =
+    meta.profiles.length === 0 ||
+    !meta.selectedProfileUuid ||
+    !meta.profiles.some((p) => p.uuid === meta.selectedProfileUuid)
+  if (sessionValid && needsProfileRefresh) {
+    try {
+      resolvedMeta = await refreshAccountInfo(activeAccountId)
+    } catch {
+      // Keep cached meta; JWT fallback below may still yield a username.
+    }
+  }
+
+  const displayName = resolveAccountDisplayName(resolvedMeta, tokens)
+  // Persist game profile name when it differs from a sticky OAuth username.
+  if (
+    displayName &&
+    resolvedMeta.displayName !== displayName &&
+    resolvedMeta.profiles.some((p) => p.name === displayName)
+  ) {
+    resolvedMeta = { ...resolvedMeta, displayName }
+    saveAccountMeta(resolvedMeta, activeAccountId)
+  }
+
   return {
     signedIn: true,
-    displayName: meta.displayName,
-    profileUuid: meta.selectedProfileUuid,
-    profiles: meta.profiles,
+    displayName,
+    profileUuid: resolvedMeta.selectedProfileUuid,
+    profiles: resolvedMeta.profiles,
     sessionValid,
     accessExpiresAt: tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : null,
     hasRefreshToken: Boolean(tokens.refreshToken),
-    clientId: tokens.clientId || DOWNLOADER_CLIENT_ID,
+    clientId: tokens.clientId || null,
+    canInstallClient: hasLauncherAccess(tokens),
     activeAccountId,
-    accounts
+    accounts: buildAccountSummaries()
   }
 }
 
 export async function startLogin(): Promise<HytaleDeviceLogin> {
   cancelLogin()
-  const device = await requestDeviceCode()
+  const { authUrl, expiresIn } = await startPkceLogin()
   loginAbort = new AbortController()
-  pendingDevice = { deviceCode: device.device_code, interval: device.interval }
   return {
-    userCode: device.user_code,
-    verificationUri: device.verification_uri || ACCOUNTS_DEVICE_PAGE,
-    verificationUriComplete: device.verification_uri_complete ?? null,
-    expiresIn: device.expires_in,
-    interval: device.interval
+    userCode: '',
+    verificationUri: authUrl,
+    verificationUriComplete: authUrl,
+    expiresIn,
+    interval: 0,
+    flow: 'pkce'
   }
 }
 
 export function cancelLogin(): void {
   loginAbort?.abort()
   loginAbort = null
-  pendingDevice = null
+  cancelPkceLogin()
 }
 
 /**
- * Completes device login and adds a new Hytale account (or the first one).
+ * Completes PKCE launcher login and adds a new Hytale account (or the first one).
  * Does not wipe existing accounts — use removeAccount / signOut for that.
  */
 export async function waitForLogin(): Promise<HytaleAuthStatus> {
-  if (!pendingDevice || !loginAbort) {
+  if (!loginAbort) {
     throw new Error('No sign-in in progress.')
   }
-  const { deviceCode, interval } = pendingDevice
   const signal = loginAbort.signal
-  const tokens = await pollDeviceToken(deviceCode, interval, signal)
-  pendingDevice = null
-  loginAbort = null
-
-  createAccountWithTokens(tokens)
-  cachedSession = null
-
   try {
-    await refreshAccountInfo()
-  } catch {
-    // Signed in for downloads even if profile APIs reject the scope.
+    const tokens = await waitPkceLogin(signal)
+    createAccountWithTokens(tokens)
+    cachedSession = null
+
+    try {
+      await refreshAccountInfo()
+    } catch {
+      // Signed in for downloads even if profile APIs reject the scope.
+    }
+    try {
+      await createGameSession()
+    } catch {
+      // Optional
+    }
+    return getAuthStatus()
+  } finally {
+    loginAbort = null
   }
-  try {
-    await createGameSession()
-  } catch {
-    // Optional
-  }
-  return getAuthStatus()
 }
 
 /** Remove the active account (or all if none specified). */
@@ -341,5 +469,16 @@ export async function requireSignedIn(): Promise<void> {
   const token = await getValidAccessTokenOrNull()
   if (!token) {
     throw new Error('Sign in with your official Hytale account before downloading.')
+  }
+}
+
+export async function requireLauncherAccess(): Promise<void> {
+  await requireSignedIn()
+  const tokens = loadTokens()
+  if (!hasLauncherAccess(tokens)) {
+    throw new Error(
+      'This account signed in with the downloader-only flow, which cannot install the full Client + JRE. ' +
+        'Remove the account under Install and sign in again (browser launcher login).'
+    )
   }
 }

@@ -7,6 +7,7 @@ import type {
   InstanceRuntimeStatus,
   SpireInstance
 } from '../../shared/types'
+import DownloadProgressPanel from './DownloadProgressPanel'
 
 interface ProfilesViewProps {
   instances: SpireInstance[]
@@ -218,13 +219,17 @@ export default function ProfilesView({
         <div className="row" style={{ marginTop: 12 }}>
           <button
             className="btn btn-primary"
-            disabled={installing}
+            disabled={installing || auth?.canInstallClient === false}
             onClick={() => void installClient(false)}
           >
             {runtime?.clientReady ? 'Update client' : 'Install full client'}
           </button>
           {runtime?.clientReady ? (
-            <button className="btn" disabled={installing} onClick={() => void installClient(true)}>
+            <button
+              className="btn"
+              disabled={installing || auth?.canInstallClient === false}
+              onClick={() => void installClient(true)}
+            >
               Repair
             </button>
           ) : null}
@@ -243,25 +248,12 @@ export default function ProfilesView({
           <p className="muted" style={{ marginBottom: 0 }}>
             Sign in under Install to download the official client + patches.
           </p>
+        ) : auth?.canInstallClient === false ? (
+          <p className="muted" style={{ marginBottom: 0 }}>
+            This saved login is downloader-only. Re-sign in under Install to install Client + JRE.
+          </p>
         ) : null}
-        {progress && progress.phase !== 'idle' && progress.phase !== 'done' ? (
-          <div className="download-progress" style={{ marginTop: 12 }}>
-            <div className="muted">{progress.message}</div>
-            {progress.bytesTotal > 0 && progress.phase === 'downloading' ? (
-              <div className="progress-bar">
-                <div
-                  className="progress-fill"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.floor((progress.bytesReceived / progress.bytesTotal) * 100)
-                    )}%`
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <DownloadProgressPanel progress={progress} style={{ marginTop: 12 }} />
       </div>
 
       <div className="panel">

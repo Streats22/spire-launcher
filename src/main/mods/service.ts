@@ -44,14 +44,18 @@ import { installDownloadedContent } from './installContent'
 import {
   curseForgeFilesPageUrl,
   getCurseForgeDetails,
-  getCurseForgeDownloadUrl,
   getCurseForgeMod,
   keylessCurseForgeSearch,
   listCurseForgeCategories,
   listCurseForgeFiles,
+  resolveCurseForgeFileUrl,
   searchCurseForge
 } from './curseforge'
 import { startDownloadWatch } from './downloadWatch'
+import {
+  emitContentProgress,
+  resetContentProgress
+} from './contentProgress'
 import {
   downloadToModsFolder,
   listInstalledMods,
@@ -77,6 +81,7 @@ import {
   parseNxmLink,
   searchNexus
 } from './nexus'
+import { ModDependencyInstaller } from './dependencyInstall'
 
 function manualResult(
   message: string,
@@ -98,14 +103,16 @@ function beginWatchAfterBrowser(
   source: ModSource,
   modId: string,
   modName: string,
-  fileNameHint?: string | null
+  fileNameHint?: string | null,
+  kind: ContentKind = 'mods'
 ): string {
   const st = startDownloadWatch({
     instanceId,
     source,
     modId,
     modName,
-    fileNameHint
+    fileNameHint,
+    kind
   })
   return st.message
 }
@@ -239,6 +246,37 @@ export async function installMod(
     return { ok: false, message: 'Instance not found.' }
   }
   const contentKind = normalizeContentKind(kind)
+  const orchestrator = new ModDependencyInstaller(installModLeaf)
+  try {
+    return await orchestrator.install(
+      instanceId,
+      source,
+      modId,
+      fileId,
+      mode,
+      modName,
+      contentKind
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    emitContentProgress({ phase: 'error', message })
+    return {
+      ok: false,
+      message
+    }
+  }
+}
+
+async function installModLeaf(
+  instanceId: string,
+  source: ModSource,
+  modId: string,
+  fileId: string | undefined,
+  mode: ModInstallMode,
+  modName: string | undefined,
+  kind: ContentKind
+): Promise<ModInstallResult> {
+  const contentKind = normalizeContentKind(kind)
 
   try {
     if (source === 'curseforge') {
@@ -264,9 +302,11 @@ export async function installMod(
     }
     return await installFromNexus(instanceId, modId, fileId, mode, modName)
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    emitContentProgress({ phase: 'error', message })
     return {
       ok: false,
-      message: err instanceof Error ? err.message : String(err)
+      message
     }
   }
 }
@@ -304,7 +344,8 @@ async function installFromCurseForge(
 
   // No API key → browser + Downloads watcher (keyless fallback only).
   if (!apiKey) {
-    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
+    resetContentProgress()
+    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name, null, contentKind)
     return manualResult(
       `Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CurseForge API key for one-click in-app install.`,
       filesPage,
@@ -318,23 +359,28 @@ async function installFromCurseForge(
     : files.find((f) => f.primary) ?? files[0]
 
   if (!file) {
-    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
+    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name, null, contentKind)
     return manualResult('No downloadable files via API — opened Files page.', filesPage, true)
   }
 
-  let url = file.downloadUrl
-  if (!url) {
-    try {
-      url = await getCurseForgeDownloadUrl(apiKey, modId, file.fileId)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
-      return manualResult(
-        `${message} Opened Files page as fallback — Spire will auto-import from Downloads.`,
-        filesPage,
-        true
-      )
-    }
+  let url: string
+  try {
+    url = await resolveCurseForgeFileUrl(apiKey, modId, file)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    beginWatchAfterBrowser(
+      instanceId,
+      'curseforge',
+      modId,
+      listing.name,
+      file.fileName,
+      contentKind
+    )
+    return manualResult(
+      `${message} Opened the Files page — finish the download there and Spire will auto-import it.`,
+      filesPage,
+      true
+    )
   }
 
   const installed = await installDownloadedContent({
@@ -352,7 +398,7 @@ async function installFromCurseForge(
 
   const where =
     contentKind === 'worlds'
-      ? 'worlds/'
+      ? 'Saves/'
       : contentKind === 'prefabs'
         ? 'prefabs/'
         : 'mods/'
@@ -375,7 +421,7 @@ async function installFromModrinth(
     modId,
     fileId || details.versions[0]?.fileId
   )
-  await downloadToModsFolder(instanceId, url, fileName)
+  await downloadToModsFolder(instanceId, url, fileName, {}, details.listing.name)
   const installed = upsertInstalledMod(instanceId, {
     source: 'modrinth',
     modId,
@@ -407,7 +453,7 @@ async function installFromModtale(
     )
   }
   const { url, fileName } = await getModtaleDownloadUrl(modId, version)
-  await downloadToModsFolder(instanceId, url, fileName)
+  await downloadToModsFolder(instanceId, url, fileName, {}, details.listing.name)
   const installed = upsertInstalledMod(instanceId, {
     source: 'modtale',
     modId,
@@ -427,7 +473,7 @@ async function installFromModifold(
   fileId?: string
 ): Promise<ModInstallResult> {
   const dl = await getModifoldDownloadUrl(modId, fileId)
-  await downloadToModsFolder(instanceId, dl.url, dl.fileName)
+  await downloadToModsFolder(instanceId, dl.url, dl.fileName, {}, dl.name)
   const installed = upsertInstalledMod(instanceId, {
     source: 'modifold',
     modId,
@@ -481,6 +527,7 @@ async function installFromNexus(
   // Free / slow path: browser Slow download; watch Downloads for auto-import.
   // Fully in-app without Premium: use Nexus “Mod Manager Download” (nxm://) instead.
   if (mode === 'slow' || !apiKey) {
+    resetContentProgress()
     beginWatchAfterBrowser(instanceId, 'nexus', modId, displayName)
     return manualResult(
       apiKey
@@ -512,7 +559,7 @@ async function installFromNexus(
       )
     }
 
-    await downloadToModsFolder(instanceId, url, file.fileName, { apikey: apiKey })
+    await downloadToModsFolder(instanceId, url, file.fileName, { apikey: apiKey }, listing.name)
 
     const installed = upsertInstalledMod(instanceId, {
       source: 'nexus',
@@ -577,7 +624,13 @@ export async function installFromNxmLink(
       )
     }
 
-    await downloadToModsFolder(instanceId, url, fileName, apiKey ? { apikey: apiKey } : undefined)
+    await downloadToModsFolder(
+      instanceId,
+      url,
+      fileName,
+      apiKey ? { apikey: apiKey } : undefined,
+      name
+    )
 
     const installed = upsertInstalledMod(instanceId, {
       source: 'nexus',

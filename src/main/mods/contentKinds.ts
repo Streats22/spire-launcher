@@ -54,7 +54,7 @@ export function contentKindLabel(kind: ContentKind): string {
  * Where Spire stores downloaded content for an instance.
  * - mods / bootstrap / translations → mods/ (Hytale loads packs & plugins from Mods)
  * - prefabs → prefabs/
- * - worlds → worlds/
+ * - worlds → userdata/Saves/
  */
 export function contentDir(instanceId: string, kind: ContentKind): string {
   const root = getInstancePath(instanceId)
@@ -64,7 +64,8 @@ export function contentDir(instanceId: string, kind: ContentKind): string {
     return dir
   }
   if (kind === 'worlds') {
-    const dir = join(root, 'worlds')
+    // Hytale loads singleplayer worlds from userdata/Saves/, not instance/worlds/.
+    const dir = join(root, 'userdata', 'Saves')
     mkdirSync(dir, { recursive: true })
     return dir
   }

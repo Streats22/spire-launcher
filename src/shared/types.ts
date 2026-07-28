@@ -32,6 +32,13 @@ export type SpireDensity = 'compact' | 'comfortable' | 'readable'
 /** Home instance browser arrangement. */
 export type SpireHomeLayout = 'grid' | 'list'
 
+/** Named folder of instances on the home screen. */
+export interface InstanceGroup {
+  id: string
+  name: string
+  sortIndex: number
+}
+
 /**
  * All settings live only on the user's machine.
  * Spire has no user accounts, analytics, or cloud sync.
@@ -44,6 +51,10 @@ export interface SpireSettings {
   /** Optional — browse/install can use browser Slow Download + nxm / Import. */
   nexusApiKey: string | null
   checkForUpdates: boolean
+  /** Pop out the run/log window when launching. Default false. */
+  openRunWindowOnLaunch: boolean
+  /** Minimize the main window after a successful launch. Default false. */
+  minimizeOnLaunch: boolean
   /** Persist gallery visibility on mod detail. Default true. */
   showModPhotos: boolean
   /** App color theme (main + manage windows). Default slate. */
@@ -52,6 +63,8 @@ export interface SpireSettings {
   density: SpireDensity
   /** Home instances: tile grid or dense list. Default grid. */
   homeLayout: SpireHomeLayout
+  /** Home screen instance folders (order = sortIndex). */
+  instanceGroups: InstanceGroup[]
 }
 
 /** How to install from the mod detail panel. */
@@ -70,6 +83,10 @@ export interface SpireInstance {
    * Null/undefined = use channel tip / Settings install path (legacy instances).
    */
   gameVersion?: string | null
+  /** Home folder id; null/undefined = Ungrouped. */
+  groupId?: string | null
+  /** Order within the group (then name as tiebreaker). */
+  sortIndex?: number
 }
 
 export interface CreateInstanceOptions {
@@ -77,6 +94,7 @@ export interface CreateInstanceOptions {
   channel?: InstanceChannel
   gameVersion?: string | null
   notes?: string
+  groupId?: string | null
 }
 
 export interface InstancePatch {
@@ -85,6 +103,14 @@ export interface InstancePatch {
   channel?: InstanceChannel
   gameVersion?: string | null
   javaArgs?: string[]
+  groupId?: string | null
+  sortIndex?: number
+}
+
+export interface InstanceOrganizationItem {
+  id: string
+  groupId: string | null
+  sortIndex: number
 }
 
 export interface InstallStatus {
@@ -147,6 +173,16 @@ export interface ModFileInfo {
   primary: boolean
   gameVersions?: string[]
   releaseType?: string
+  /** Store-declared dependencies (CurseForge / Thunderstore when known). */
+  dependencies?: ModDependencyRef[]
+}
+
+/** A required/related mod referenced by a file version. */
+export interface ModDependencyRef {
+  source: ModSource
+  modId: string
+  /** required = must install; optional is listed but not auto-downloaded */
+  relation: 'required' | 'optional' | 'embedded' | 'include' | 'tool' | 'incompatible'
 }
 
 export interface ModImage {
@@ -196,6 +232,8 @@ export interface ModInstallResult {
   ok: boolean
   message: string
   installed?: InstalledMod
+  /** Required dependencies that were auto-installed with this request. */
+  dependenciesInstalled?: InstalledMod[]
   /** @deprecated Prefer needsManualDownload */
   needsManualNxm?: boolean
   /** Opened (or should open) browser / nxm / Import — free-tier path. */
@@ -221,6 +259,13 @@ export interface WorldEntry {
   path: string
   updatedAt: string | null
   sizeBytes: number
+}
+
+/** Result of pushing Spire’s enabled mod set into every save’s config.json. */
+export interface ApplyModSetResult {
+  saves: number
+  updated: number
+  modCount: number
 }
 
 export interface ServerEntry {
@@ -255,11 +300,14 @@ export interface LocalDataInfo {
 export type HytalePatchline = 'release' | 'pre-release'
 
 export interface HytaleDeviceLogin {
+  /** Empty for PKCE launcher login; set for legacy device-code flow. */
   userCode: string
   verificationUri: string
   verificationUriComplete: string | null
   expiresIn: number
   interval: number
+  /** Official launcher browser PKCE (required for full Client + JRE). */
+  flow?: 'pkce' | 'device'
 }
 
 export interface HytaleProfile {
@@ -279,7 +327,7 @@ export interface HytaleAccountSummary {
 
 export interface HytaleAuthStatus {
   signedIn: boolean
-  /** Username / profile display when known (active account) */
+  /** Selected game profile name when known (falls back to OAuth username) */
   displayName: string | null
   profileUuid: string | null
   profiles: HytaleProfile[]
@@ -289,6 +337,8 @@ export interface HytaleAuthStatus {
   accessExpiresAt: string | null
   hasRefreshToken: boolean
   clientId: string | null
+  /** True when tokens include auth:launcher (Wharf Client + JRE installs). */
+  canInstallClient: boolean
   /** Active saved account id */
   activeAccountId: string | null
   /** All locally saved Hytale accounts */
@@ -344,6 +394,16 @@ export interface HytaleDownloadProgress {
   installPath: string | null
 }
 
+/** Mods / worlds / prefabs install transfer (same bar UI as client downloads). */
+export interface ContentDownloadProgress {
+  phase: 'idle' | 'resolving' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error'
+  kind: ContentKind | null
+  name: string | null
+  bytesReceived: number
+  bytesTotal: number
+  message: string
+}
+
 export interface HytaleDownloadResult {
   ok: boolean
   message: string
@@ -385,6 +445,20 @@ export interface RunLogEvent {
   at: string
 }
 
+export interface DetectedGameInstall {
+  path: string
+  label: string
+  clientPath: string
+  javaPath: string | null
+}
+
+export interface DetectGameInstallResult {
+  applied: boolean
+  path: string | null
+  found: DetectedGameInstall[]
+  settings: SpireSettings
+}
+
 export interface SpireApi {
   getPlatform: () => Promise<Platform>
   getAppVersion: () => Promise<string>
@@ -392,6 +466,7 @@ export interface SpireApi {
   updateSettings: (patch: Partial<SpireSettings>) => Promise<SpireSettings>
   setGameInstallPath: (path: string) => Promise<SpireSettings>
   pickGameInstallPath: () => Promise<string | null>
+  detectGameInstall: () => Promise<DetectGameInstallResult>
   getInstallStatus: () => Promise<InstallStatus>
   getLocalDataInfo: () => Promise<LocalDataInfo>
   openSpireDataFolder: () => Promise<void>
@@ -404,6 +479,11 @@ export interface SpireApi {
   listInstances: () => Promise<SpireInstance[]>
   createInstance: (options: CreateInstanceOptions | string) => Promise<SpireInstance>
   updateInstance: (id: string, patch: InstancePatch) => Promise<SpireInstance>
+  organizeInstances: (items: InstanceOrganizationItem[]) => Promise<SpireInstance[]>
+  createInstanceGroup: (name: string) => Promise<SpireSettings>
+  renameInstanceGroup: (id: string, name: string) => Promise<SpireSettings>
+  deleteInstanceGroup: (id: string) => Promise<{ settings: SpireSettings; instances: SpireInstance[] }>
+  reorderInstanceGroups: (ids: string[]) => Promise<SpireSettings>
   duplicateInstance: (id: string, newName?: string) => Promise<SpireInstance>
   deleteInstance: (id: string) => Promise<void>
   setActiveInstance: (id: string) => Promise<SpireSettings>
@@ -445,6 +525,8 @@ export interface SpireApi {
   duplicateWorld: (instanceId: string, worldId: string, newName?: string) => Promise<WorldEntry>
   deleteWorld: (instanceId: string, worldId: string) => Promise<void>
   openWorldFolder: (instanceId: string, worldId: string) => Promise<void>
+  /** Force Spire-enabled mods on in every save’s config.json. */
+  applyModSetToSaves: (instanceId: string) => Promise<ApplyModSetResult>
   listServers: (instanceId: string) => Promise<ServerEntry[]>
   upsertServer: (
     instanceId: string,
@@ -482,6 +564,10 @@ export interface SpireApi {
   openOfficialHytaleDownload: () => Promise<void>
   onHytaleDownloadProgress: (
     handler: (progress: HytaleDownloadProgress) => void
+  ) => () => void
+  getContentDownloadProgress: () => Promise<ContentDownloadProgress>
+  onContentDownloadProgress: (
+    handler: (progress: ContentDownloadProgress) => void
   ) => () => void
   onLogLine: (handler: (entry: SpireLogEntry) => void) => () => void
   onRunLog: (handler: (event: RunLogEvent) => void) => () => void
