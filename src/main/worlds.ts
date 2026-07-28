@@ -5,7 +5,8 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync
+  writeFileSync,
+  cpSync
 } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -74,6 +75,25 @@ export function renameWorld(instanceId: string, worldId: string, name: string): 
   const to = join(root, safe)
   if (from !== to && existsSync(to)) throw new Error('A world with that name already exists.')
   if (from !== to) renameSync(from, to)
+  return listWorlds(instanceId).find((w) => w.id === safe)!
+}
+
+export function duplicateWorld(instanceId: string, worldId: string, newName?: string): WorldEntry {
+  const root = worldsRoot(instanceId)
+  const from = join(root, worldId)
+  if (!existsSync(from)) throw new Error('World not found.')
+
+  const base =
+    (newName?.trim() || `${worldId} copy`).replace(/[\\/:*?"<>|]/g, '_') ||
+    `World-${randomUUID().slice(0, 8)}`
+  let safe = base
+  let n = 2
+  while (existsSync(join(root, safe))) {
+    safe = `${base} ${n}`
+    n += 1
+  }
+
+  cpSync(from, join(root, safe), { recursive: true })
   return listWorlds(instanceId).find((w) => w.id === safe)!
 }
 

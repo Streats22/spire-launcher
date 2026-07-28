@@ -3,6 +3,7 @@ import type {
   ModFileInfo,
   ModImage,
   ModListing,
+  ModSearchOptions,
   ModSearchResult
 } from '../../shared/types'
 import { NEXUS_API_BASE, NEXUS_GAME_DOMAIN, NEXUS_GRAPHQL, NEXUS_HYTALE_BROWSE_URL, SPIRE_USER_AGENT } from './constants'
@@ -130,32 +131,38 @@ export function nexusSlowDownloadHintUrl(modId: string | number, fileId?: string
 
 export async function searchNexus(
   apiKey: string | null | undefined,
-  options: { query?: string; sort?: string } = {}
+  options: ModSearchOptions = {}
 ): Promise<ModSearchResult> {
   const trimmed = (options.query ?? '').trim()
   const key = apiKey?.trim() || null
+  const limit = options.limit ?? 24
+  const offset = options.offset ?? 0
 
   if (trimmed && /^\d+$/.test(trimmed)) {
     try {
       const mod = await getNexusMod(Number(trimmed), key)
-      return { mods: [mod], total: 1 }
+      return { mods: offset > 0 ? [] : [mod], total: 1, hasMore: false }
     } catch {
       return {
-        mods: [
-          {
-            source: 'nexus',
-            id: trimmed,
-            slug: trimmed,
-            name: `Mod #${trimmed}`,
-            summary: 'Open detail or use Download to open the Nexus page.',
-            author: 'Nexus',
-            downloads: 0,
-            logoUrl: null,
-            pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${trimmed}`,
-            updatedAt: null
-          }
-        ],
+        mods:
+          offset > 0
+            ? []
+            : [
+                {
+                  source: 'nexus',
+                  id: trimmed,
+                  slug: trimmed,
+                  name: `Mod #${trimmed}`,
+                  summary: 'Open detail or use Download to open the Nexus page.',
+                  author: 'Nexus',
+                  downloads: 0,
+                  logoUrl: null,
+                  pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${trimmed}`,
+                  updatedAt: null
+                }
+              ],
         total: 1,
+        hasMore: false,
         notice: key
           ? null
           : 'Showing mod by ID without API key — open detail or Download for Slow download.'
@@ -163,18 +170,17 @@ export async function searchNexus(
     }
   }
 
-  if (trimmed) {
-    try {
-      const gql = await searchNexusGraphql(trimmed, key)
-      if (gql.mods.length) {
-        return { ...gql, mods: sortListings(gql.mods, options.sort) }
-      }
-    } catch {
-      // fall through
+  // GraphQL supports offset for search and browse.
+  try {
+    const gql = await searchNexusGraphql(trimmed || null, key, { limit, offset, sort: options.sort })
+    if (gql.mods.length || offset === 0) {
+      return gql
     }
+  } catch {
+    // fall through to legacy endpoints
   }
 
-  if (key) {
+  if (key && offset === 0) {
     const [trending, latest] = await Promise.all([
       nexusFetch<NexusMod[]>(`/games/${NEXUS_GAME_DOMAIN}/mods/trending.json`, key).catch(
         () => [] as NexusMod[]
@@ -200,13 +206,18 @@ export async function searchNexus(
       })
     }
 
-    return { mods: sortListings(mods, options.sort), total: mods.length }
+    const sorted = sortListings(mods, options.sort)
+    return { mods: sorted, total: sorted.length, hasMore: false }
   }
 
-  // Keyless: GraphQL already tried; offer browse fallback notice
+  if (offset > 0) {
+    return { mods: [], total: 0, hasMore: false }
+  }
+
   return {
     mods: [],
     total: 0,
+    hasMore: false,
     notice: trimmed
       ? `Couldn’t search Nexus without a key for “${trimmed}”. Open Nexus in your browser, use Slow download, then Import file — or paste nxm://. Optional Premium API key enables in-app browse & Download quickly.`
       : `Browse Nexus without a key is limited. Open ${NEXUS_HYTALE_BROWSE_URL} or add an optional Premium API key in Settings for in-app search & fast downloads.`
@@ -227,16 +238,27 @@ function sortListings(mods: ModListing[], sort?: string): ModListing[] {
 }
 
 async function searchNexusGraphql(
-  term: string,
-  apiKey?: string | null
+  term: string | null,
+  apiKey: string | null | undefined,
+  page: { limit: number; offset: number; sort?: string }
 ): Promise<ModSearchResult> {
+  const sortField =
+    page.sort === 'name'
+      ? 'NAME'
+      : page.sort === 'updated'
+        ? 'UPDATED_AT'
+        : 'DOWNLOADS'
+  const filterBlock = term
+    ? `filter: { filter: [{ filter: name, op: WILDCARD, value: $term }] }`
+    : ''
   const query = `
-    query SearchHytaleMods($term: String!) {
+    query SearchHytaleMods($term: String, $count: Int!, $offset: Int!) {
       mods(
-        filter: { filter: [{ filter: name, op: WILDCARD, value: $term }] }
+        ${filterBlock}
         domain: "${NEXUS_GAME_DOMAIN}"
-        count: 24
-        sort: { field: DOWNLOADS, direction: DESC }
+        count: $count
+        offset: $offset
+        sort: { field: ${sortField}, direction: DESC }
       ) {
         nodes {
           modId
@@ -258,7 +280,14 @@ async function searchNexusGraphql(
       ...nexusHeaders(apiKey),
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ query, variables: { term: `*${term}*` } })
+    body: JSON.stringify({
+      query,
+      variables: {
+        term: term ? `*${term}*` : null,
+        count: page.limit,
+        offset: page.offset
+      }
+    })
   })
 
   if (!res.ok) {
@@ -288,22 +317,29 @@ async function searchNexusGraphql(
   }
 
   const nodes = json.data?.mods?.nodes ?? []
+  const total = json.data?.mods?.totalCount ?? nodes.length
+  const mods = nodes
+    .filter((n) => n && n.modId != null)
+    .map((n) => ({
+      source: 'nexus' as const,
+      id: String(n.modId),
+      slug: String(n.modId),
+      name: n.name?.trim() || `Mod #${n.modId}`,
+      summary: n.summary ?? '',
+      author: n.uploader?.name ?? 'Unknown',
+      downloads: Math.round(n.downloads ?? 0),
+      logoUrl: n.pictureUrl ?? null,
+      pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${n.modId}`,
+      updatedAt: n.updatedAt ?? null
+    }))
+
   return {
-    total: json.data?.mods?.totalCount ?? nodes.length,
-    mods: nodes
-      .filter((n) => n && n.modId != null)
-      .map((n) => ({
-        source: 'nexus' as const,
-        id: String(n.modId),
-        slug: String(n.modId),
-        name: n.name?.trim() || `Mod #${n.modId}`,
-        summary: n.summary ?? '',
-        author: n.uploader?.name ?? 'Unknown',
-        downloads: Math.round(n.downloads ?? 0),
-        logoUrl: n.pictureUrl ?? null,
-        pageUrl: `https://www.nexusmods.com/${NEXUS_GAME_DOMAIN}/mods/${n.modId}`,
-        updatedAt: n.updatedAt ?? null
-      }))
+    total,
+    mods,
+    hasMore:
+      json.data?.mods?.totalCount != null
+        ? page.offset + mods.length < total
+        : mods.length >= page.limit
   }
 }
 

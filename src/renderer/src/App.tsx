@@ -7,12 +7,14 @@ import type {
   SpireSettings,
   UpdateCheckResult
 } from '../../shared/types'
+import ContextMenu, { useContextMenu } from './ContextMenu'
 import CreateInstanceDialog from './CreateInstanceDialog'
-import ModsBrowser from './ModsBrowser'
 import VersionsView from './VersionsView'
 import spireLogo from './assets/spire-logo.png'
+import { THEME_OPTIONS, applyTheme, normalizeTheme } from './theme'
+import type { SpireTheme } from '../../shared/types'
 
-type View = 'home' | 'mods' | 'settings' | 'versions'
+type View = 'home' | 'settings' | 'versions'
 
 export default function App(): React.JSX.Element {
   const [settings, setSettings] = useState<SpireSettings | null>(null)
@@ -28,6 +30,7 @@ export default function App(): React.JSX.Element {
   const [update, setUpdate] = useState<UpdateCheckResult | null>(null)
   const [creating, setCreating] = useState(false)
   const [hytaleAuth, setHytaleAuth] = useState<HytaleAuthStatus | null>(null)
+  const { menu, openMenu, closeMenu } = useContextMenu()
 
   const refresh = useCallback(async () => {
     const [nextSettings, nextInstances, nextStatus, nextData] = await Promise.all([
@@ -51,27 +54,42 @@ export default function App(): React.JSX.Element {
   }, [refresh])
 
   useEffect(() => {
-    void window.spire.checkForUpdate().then(setUpdate)
+    if (settings?.theme) applyTheme(normalizeTheme(settings.theme))
+  }, [settings?.theme])
+
+  useEffect(() => {
+    return window.spire.onSettingsChanged((next) => {
+      setSettings(next)
+      applyTheme(normalizeTheme(next.theme))
+    })
   }, [])
 
   useEffect(() => {
+    void window.spire.checkForUpdate().then(setUpdate)
+  }, [])
+
+  const active = useMemo(
+    () => instances.find((i) => i.id === settings?.activeInstanceId) ?? instances[0] ?? null,
+    [instances, settings]
+  )
+
+  useEffect(() => {
     return window.spire.onNavigate((next) => {
-      if (next === 'mods' || next === 'versions' || next === 'settings' || next === 'home') {
+      if (next === 'versions' || next === 'settings' || next === 'home') {
         setView(next)
       }
+      if (next === 'mods') {
+        const id = settings?.activeInstanceId ?? instances[0]?.id
+        if (id) void window.spire.openManageWindow(id, 'mods')
+      }
     })
-  }, [])
+  }, [settings?.activeInstanceId, instances])
 
   useEffect(() => {
     if (!toast) return
     const t = window.setTimeout(() => setToast(null), 3200)
     return () => window.clearTimeout(t)
   }, [toast])
-
-  const active = useMemo(
-    () => instances.find((i) => i.id === settings?.activeInstanceId) ?? instances[0] ?? null,
-    [instances, settings]
-  )
 
   async function selectInstance(id: string): Promise<void> {
     const next = await window.spire.setActiveInstance(id)
@@ -87,29 +105,68 @@ export default function App(): React.JSX.Element {
     setCreating(false)
   }
 
-  async function onLaunch(): Promise<void> {
-    if (!active) return
+  async function onLaunch(instanceId?: string): Promise<void> {
+    const id = instanceId ?? active?.id
+    if (!id) return
     setBusy(true)
     try {
-      const result = await window.spire.launchInstance(active.id)
+      if (id !== active?.id) await selectInstance(id)
+      const result = await window.spire.launchInstance(id)
       setToast(result.message)
     } finally {
       setBusy(false)
     }
   }
 
-  async function onDelete(): Promise<void> {
-    if (!active) return
-    if (!confirm(`Delete instance “${active.name}”?`)) return
+  async function onDelete(instanceId?: string): Promise<void> {
+    const target = instances.find((i) => i.id === (instanceId ?? active?.id))
+    if (!target) return
+    if (!confirm(`Delete instance “${target.name}”?`)) return
     setBusy(true)
     try {
-      await window.spire.deleteInstance(active.id)
+      await window.spire.deleteInstance(target.id)
       await refresh()
       setView('home')
       setToast('Instance deleted')
     } finally {
       setBusy(false)
     }
+  }
+
+  function openInstanceMenu(event: React.MouseEvent, instance: SpireInstance): void {
+    void selectInstance(instance.id)
+    const canLaunch = Boolean(status?.valid || instance.gameVersion)
+    openMenu(event, [
+      {
+        id: 'launch',
+        label: 'Launch',
+        disabled: busy || !canLaunch,
+        onSelect: () => void onLaunch(instance.id)
+      },
+      {
+        id: 'edit',
+        label: 'Edit',
+        onSelect: () => void window.spire.openManageWindow(instance.id)
+      },
+      {
+        id: 'mods',
+        label: 'Mods',
+        onSelect: () => void window.spire.openManageWindow(instance.id, 'mods')
+      },
+      {
+        id: 'folder',
+        label: 'Open folder',
+        onSelect: () => void window.spire.openInstanceFolder(instance.id)
+      },
+      { id: 'sep', label: '', separator: true },
+      {
+        id: 'delete',
+        label: 'Delete',
+        danger: true,
+        disabled: busy,
+        onSelect: () => void onDelete(instance.id)
+      }
+    ])
   }
 
   async function onPickInstall(): Promise<void> {
@@ -146,35 +203,35 @@ export default function App(): React.JSX.Element {
     setUpdate(await window.spire.checkForUpdate())
   }
 
+  async function onThemeChange(theme: SpireTheme): Promise<void> {
+    applyTheme(theme)
+    const next = await window.spire.updateSettings({ theme })
+    setSettings(next)
+  }
+
   const installOk = Boolean(status?.valid)
-  const showActionBar = view === 'home' || view === 'mods'
+  const showActionBar = view === 'home'
+  const awayFromHome = view !== 'home'
 
   return (
     <div className="app">
       <header className="toolbar">
-        <span className="toolbar-brand">
+        <button
+          type="button"
+          className="toolbar-brand"
+          onClick={() => setView('home')}
+          title="Home"
+        >
           <img className="toolbar-logo" src={spireLogo} alt="" />
           Spire
-        </span>
-        <button className="btn" type="button" disabled={busy} onClick={openCreateDialog}>
-          Add Instance
         </button>
-        <button
-          className={`btn${view === 'versions' ? ' active' : ''}`}
-          type="button"
-          onClick={() => setView(view === 'versions' ? 'home' : 'versions')}
-        >
-          {view === 'versions' ? 'Back' : 'Install'}
-        </button>
-        <button
-          className={`btn${view === 'settings' ? ' active' : ''}`}
-          type="button"
-          onClick={() => setView(view === 'settings' ? 'home' : 'settings')}
-        >
-          {view === 'settings' ? 'Back' : 'Settings'}
-        </button>
+        {awayFromHome ? (
+          <button className="btn btn-ghost" type="button" onClick={() => setView('home')}>
+            ← Back
+          </button>
+        ) : null}
         <div className="toolbar-spacer" />
-        {active && view !== 'settings' && view !== 'versions' ? (
+        {active && view === 'home' ? (
           <span className="toolbar-chip" title={active.name}>
             <strong>{active.name}</strong>
           </span>
@@ -187,6 +244,25 @@ export default function App(): React.JSX.Element {
               : ''}
           </span>
         ) : null}
+        <div className="toolbar-actions">
+          <button
+            className={`btn btn-ghost${view === 'versions' ? ' active' : ''}`}
+            type="button"
+            onClick={() => setView(view === 'versions' ? 'home' : 'versions')}
+            title="Install game client & accounts"
+          >
+            Install
+          </button>
+          <button
+            className={`btn btn-icon${view === 'settings' ? ' active' : ''}`}
+            type="button"
+            onClick={() => setView(view === 'settings' ? 'home' : 'settings')}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <span aria-hidden>⚙</span>
+          </button>
+        </div>
       </header>
 
       {update?.updateAvailable ? (
@@ -338,6 +414,32 @@ export default function App(): React.JSX.Element {
               </div>
 
               <div className="panel">
+                <h2>Appearance</h2>
+                <p className="muted">Applies to the main window and manage sidebar.</p>
+                <div className="theme-grid">
+                  {THEME_OPTIONS.map((opt) => {
+                    const selected = normalizeTheme(settings?.theme) === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`theme-card theme-preview-${opt.id}${selected ? ' selected' : ''}`}
+                        onClick={() => void onThemeChange(opt.id)}
+                      >
+                        <span className="theme-swatches" aria-hidden>
+                          <span className="swatch swatch-bg" />
+                          <span className="swatch swatch-nav" />
+                          <span className="swatch swatch-accent" />
+                        </span>
+                        <strong>{opt.label}</strong>
+                        <span className="muted">{opt.blurb}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="panel">
                 <h2>Data folder</h2>
                 <div className="path-row">
                   <code title={dataInfo?.spireRoot}>{dataInfo?.spireRoot ?? '…'}</code>
@@ -375,26 +477,41 @@ export default function App(): React.JSX.Element {
                 void window.spire.getHytaleAuthStatus().then(setHytaleAuth)
               }}
             />
-          ) : view === 'mods' && active ? (
-            <ModsBrowser
-              instanceId={active.id}
-              instanceName={active.name}
-              onToast={setToast}
-              showModPhotos={settings?.showModPhotos !== false}
-              onShowModPhotosChange={(show) => {
-                void window.spire.updateSettings({ showModPhotos: show }).then(setSettings)
-              }}
-            />
           ) : (
             <div className="instance-view">
-              <div className="group-label">Instances</div>
+              <div className="group-header">
+                <div className="group-label">Instances</div>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={openCreateDialog}
+                >
+                  Add Instance
+                </button>
+              </div>
               {instances.length === 0 ? (
                 <div className="empty-state">
                   <p style={{ margin: '0 0 8px', color: 'var(--ink)', fontWeight: 600 }}>
                     No instances yet
                   </p>
-                  Click <strong>Add Instance</strong> to create a profile, then install the full
-                  client under <strong>Install</strong> (or point Settings at an official install).
+                  <p style={{ margin: '0 0 14px' }}>
+                    Create a profile, then install the full client under Install (or point Settings
+                    at an official install).
+                  </p>
+                  <div className="row">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={busy}
+                      onClick={openCreateDialog}
+                    >
+                      Add Instance
+                    </button>
+                    <button className="btn" type="button" onClick={() => setView('versions')}>
+                      Install
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="instance-grid">
@@ -405,8 +522,9 @@ export default function App(): React.JSX.Element {
                       className={`instance-card${active?.id === instance.id ? ' selected' : ''}`}
                       onClick={() => void selectInstance(instance.id)}
                       onDoubleClick={() => {
-                        void selectInstance(instance.id).then(() => void onLaunch())
+                        void selectInstance(instance.id).then(() => void onLaunch(instance.id))
                       }}
+                      onContextMenu={(e) => openInstanceMenu(e, instance)}
                     >
                       <img className="instance-icon" src={spireLogo} alt="" />
                       <span className="instance-card-name">{instance.name}</span>
@@ -451,10 +569,13 @@ export default function App(): React.JSX.Element {
               Edit
             </button>
             <button
-              className={`btn-tool${view === 'mods' ? ' active' : ''}`}
+              className="btn-tool"
               type="button"
               disabled={!active}
-              onClick={() => setView(view === 'mods' ? 'home' : 'mods')}
+              onClick={() => {
+                if (!active) return
+                void window.spire.openManageWindow(active.id, 'mods')
+              }}
             >
               <span className="icon">▣</span>
               Mods
@@ -518,6 +639,7 @@ export default function App(): React.JSX.Element {
       />
 
       {toast ? <div className="toast">{toast}</div> : null}
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   )
 }

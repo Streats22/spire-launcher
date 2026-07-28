@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   DownloadWatchStatus,
   InstalledMod,
@@ -8,6 +8,9 @@ import type {
   ModSort,
   ModSource
 } from '../../shared/types'
+import ContextMenu, { useContextMenu } from './ContextMenu'
+
+const PAGE_SIZE = 40
 
 interface ModsBrowserProps {
   instanceId: string
@@ -58,17 +61,41 @@ export default function ModsBrowser({
   const [sort, setSort] = useState<ModSort>('downloads')
   const [nxmLink, setNxmLink] = useState('')
   const [results, setResults] = useState<ModListing[]>([])
+  const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [installed, setInstalled] = useState<InstalledMod[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [installingId, setInstallingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [nxmHint, setNxmHint] = useState(false)
   const [selected, setSelected] = useState<ModListing | null>(null)
   const [details, setDetails] = useState<ModDetails | null>(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [watchStatus, setWatchStatus] = useState<DownloadWatchStatus | null>(null)
+  const [view, setView] = useState<'installed' | 'download'>('installed')
+  const { menu, openMenu, closeMenu } = useContextMenu()
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const resultsRef = useRef<HTMLDivElement | null>(null)
+  const stateRef = useRef({
+    query,
+    source,
+    sort,
+    resultsLength: 0,
+    hasMore: false,
+    loading: false,
+    loadingMore: false
+  })
+  stateRef.current = {
+    query,
+    source,
+    sort,
+    resultsLength: results.length,
+    hasMore,
+    loading,
+    loadingMore
+  }
 
   const refreshInstalled = useCallback(async () => {
     setInstalled(await window.spire.listInstalledMods(instanceId))
@@ -91,47 +118,110 @@ export default function ModsBrowser({
     }
   }, [onToast, refreshInstalled])
 
+  const mergeUnique = useCallback((prev: ModListing[], next: ModListing[]): ModListing[] => {
+    const seen = new Set(prev.map((m) => `${m.source}:${m.id}`))
+    const merged = [...prev]
+    for (const mod of next) {
+      const key = `${mod.source}:${mod.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(mod)
+    }
+    return merged
+  }, [])
+
   const runSearch = useCallback(
-    async (nextQuery = query) => {
-      setLoading(true)
-      setError(null)
-      setNotice(null)
+    async (nextQuery: string, mode: 'replace' | 'append' = 'replace') => {
+      const snap = stateRef.current
+      if (mode === 'append') {
+        if (snap.loadingMore || snap.loading || !snap.hasMore) return
+        setLoadingMore(true)
+        stateRef.current.loadingMore = true
+      } else {
+        setLoading(true)
+        stateRef.current.loading = true
+        setError(null)
+        setNotice(null)
+      }
+
+      const offset = mode === 'append' ? snap.resultsLength : 0
+
       try {
-        const result = await window.spire.searchMods(source, {
+        const result = await window.spire.searchMods(snap.source, {
           query: nextQuery,
-          sort
+          sort: snap.sort,
+          offset,
+          limit: PAGE_SIZE
         })
-        setResults(result.mods)
+        const nextHasMore =
+          result.mods.length === 0
+            ? false
+            : (result.hasMore ??
+              (result.total > 0 && offset + result.mods.length < result.total))
+        setTotal(result.total)
+        setHasMore(nextHasMore)
+        stateRef.current.hasMore = nextHasMore
         setNotice(result.notice ?? null)
-        if (result.notice && result.mods.length === 0) {
-          // Offer catalog in browser for keyless fallbacks
+        setResults((prev) => {
+          const next = mode === 'append' ? mergeUnique(prev, result.mods) : result.mods
+          stateRef.current.resultsLength = next.length
+          return next
+        })
+
+        if (mode === 'replace' && result.notice && result.mods.length === 0 && nextQuery.trim()) {
           const browse =
-            source === 'curseforge'
-              ? nextQuery.trim()
-                ? `https://www.curseforge.com/hytale/mods?search=${encodeURIComponent(nextQuery.trim())}`
-                : 'https://www.curseforge.com/hytale/mods'
+            snap.source === 'curseforge'
+              ? `https://www.curseforge.com/hytale/mods?search=${encodeURIComponent(nextQuery.trim())}`
               : 'https://www.nexusmods.com/hytale/mods/'
-          // Don't auto-spam browser on every empty load — only when user searched
-          if (nextQuery.trim()) {
-            void window.spire.openExternal(browse)
-          }
+          void window.spire.openExternal(browse)
         }
       } catch (err) {
-        setResults([])
+        if (mode === 'replace') {
+          setResults([])
+          setTotal(0)
+          setHasMore(false)
+          stateRef.current.resultsLength = 0
+          stateRef.current.hasMore = false
+        }
         setError(err instanceof Error ? err.message : String(err))
       } finally {
         setLoading(false)
+        setLoadingMore(false)
+        stateRef.current.loading = false
+        stateRef.current.loadingMore = false
       }
     },
-    [query, source, sort]
+    [mergeUnique]
   )
 
   useEffect(() => {
+    if (view !== 'download') return
     setSelected(null)
     setDetails(null)
-    void runSearch('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source])
+    setResults([])
+    setTotal(0)
+    setHasMore(false)
+    stateRef.current.resultsLength = 0
+    stateRef.current.hasMore = false
+    void runSearch('', 'replace')
+  }, [source, runSearch, view])
+
+  useEffect(() => {
+    if (view !== 'download') return
+    const root = resultsRef.current
+    const sentinel = sentinelRef.current
+    if (!root || !sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        void runSearch(stateRef.current.query, 'append')
+      },
+      { root, rootMargin: '320px', threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [runSearch, source, results.length, hasMore, view])
 
   useEffect(() => {
     if (!selected) {
@@ -165,13 +255,11 @@ export default function ModsBrowser({
   const handleNxm = useCallback(
     async (url: string) => {
       setInstallingId('nxm')
-      setNxmHint(true)
       try {
         const result = await window.spire.installFromNxm(instanceId, url)
         onToast(result.message)
         if (result.ok) {
           setNxmLink('')
-          setNxmHint(false)
           await refreshInstalled()
         }
       } finally {
@@ -205,7 +293,6 @@ export default function ModsBrowser({
       )
       onToast(result.message)
       if (result.needsManualDownload || result.needsManualNxm) {
-        setNxmHint(true)
         if (mod.source === 'nexus') setSource('nexus')
       }
       if (result.watchingDownloads) {
@@ -225,6 +312,13 @@ export default function ModsBrowser({
     onToast(`Removed “${mod.name}”`)
   }
 
+  async function onToggleEnabled(mod: InstalledMod): Promise<void> {
+    const enabled = mod.enabled !== false
+    await window.spire.setModEnabled(instanceId, mod.source, mod.modId, !enabled)
+    await refreshInstalled()
+    onToast(!enabled ? `Enabled “${mod.name}”` : `Disabled “${mod.name}”`)
+  }
+
   async function onImportFile(): Promise<void> {
     const result = await window.spire.importLocalMod(instanceId)
     if (!result) return
@@ -234,14 +328,135 @@ export default function ModsBrowser({
 
   const installedKeys = new Set(installed.map((m) => `${m.source}:${m.modId}`))
   const listing = details?.listing ?? selected
+  const isCurseForge = source === 'curseforge'
+  const isNexus = source === 'nexus'
   const quickAvailable =
-    details?.quickDownloadAvailable ??
-    (source === 'curseforge' || source === 'nexus' ? false : true)
+    details?.quickDownloadAvailable ?? (isNexus ? false : !isCurseForge)
+  const enabledCount = installed.filter((m) => m.enabled !== false).length
+
+  if (view === 'installed') {
+    return (
+      <div className="mods mods-manage">
+        <div className="mods-manage-header">
+          <div>
+            <h1 className="page-title">Mods</h1>
+            <p className="page-sub">
+              {installed.length === 0
+                ? `No mods on ${instanceName} yet.`
+                : `${enabledCount} active · ${installed.length} installed on ${instanceName}`}
+            </p>
+          </div>
+          <div className="mods-manage-actions">
+            <button className="btn" type="button" onClick={() => void onImportFile()}>
+              Import file
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => setView('download')}
+            >
+              Download
+            </button>
+          </div>
+        </div>
+
+        {watchStatus?.active ? (
+          <div className="nxm-box">
+            <p style={{ marginBottom: 8 }}>{watchStatus.message}</p>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => void window.spire.stopDownloadWatch().then(() => setWatchStatus(null))}
+            >
+              Stop watching
+            </button>
+          </div>
+        ) : null}
+
+        {installed.length === 0 ? (
+          <div className="empty-state mods-empty">
+            <p>Install mods from CurseForge or Nexus, or import a local file.</p>
+            <button className="btn btn-primary" type="button" onClick={() => setView('download')}>
+              Download mods
+            </button>
+          </div>
+        ) : (
+          <div className="mods-installed-list">
+            <p className="muted mods-installed-hint">
+              Uncheck Active to disable without removing (files move to <code>mods/disabled/</code>).
+            </p>
+            {installed.map((mod) => {
+              const on = mod.enabled !== false
+              return (
+                <div
+                  key={`${mod.source}:${mod.modId}:${mod.fileName}`}
+                  className={`manage-row${!on ? ' is-disabled' : ''}`}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      {
+                        id: 'toggle',
+                        label: on ? 'Disable' : 'Enable',
+                        onSelect: () => void onToggleEnabled(mod)
+                      },
+                      { id: 'sep', label: '', separator: true },
+                      {
+                        id: 'remove',
+                        label: 'Remove',
+                        danger: true,
+                        onSelect: () => void onRemove(mod)
+                      }
+                    ])
+                  }
+                >
+                  <div className="manage-row-main">
+                    <strong>{mod.name}</strong>
+                    <span className="muted">
+                      {mod.source} · {mod.fileName}
+                      {!on ? ' · disabled' : ''}
+                    </span>
+                  </div>
+                  <div className="manage-row-actions">
+                    <label className="check-inline">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => void onToggleEnabled(mod)}
+                      />
+                      Active
+                    </label>
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      onClick={() => void onRemove(mod)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <ContextMenu menu={menu} onClose={closeMenu} />
+      </div>
+    )
+  }
 
   return (
     <div className="mods">
       <div className="mods-toolbar">
-        <strong>{instanceName}</strong>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => {
+            setSelected(null)
+            setDetails(null)
+            setView('installed')
+            void refreshInstalled()
+          }}
+        >
+          ← Installed
+        </button>
         <div className="source-tabs" role="tablist">
           <button
             type="button"
@@ -262,7 +477,7 @@ export default function ModsBrowser({
           className="mods-search-inline"
           onSubmit={(e) => {
             e.preventDefault()
-            void runSearch()
+            void runSearch(query, 'replace')
           }}
         >
           <input
@@ -276,21 +491,8 @@ export default function ModsBrowser({
             onChange={(e) => {
               const next = e.target.value as ModSort
               setSort(next)
-              void (async () => {
-                setLoading(true)
-                try {
-                  const result = await window.spire.searchMods(source, {
-                    query,
-                    sort: next
-                  })
-                  setResults(result.mods)
-                  setNotice(result.notice ?? null)
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err))
-                } finally {
-                  setLoading(false)
-                }
-              })()
+              stateRef.current.sort = next
+              void runSearch(query, 'replace')
             }}
             aria-label="Sort mods"
           >
@@ -308,7 +510,7 @@ export default function ModsBrowser({
         </button>
       </div>
 
-      {source === 'nexus' || nxmHint ? (
+      {isNexus ? (
         <div className="nxm-box">
           <p>
             Nexus free Slow download must start in the browser (their rules). Prefer{' '}
@@ -335,6 +537,13 @@ export default function ModsBrowser({
         </div>
       ) : null}
 
+      {isCurseForge ? (
+        <p className="mods-notice">
+          CurseForge installs download straight into this instance (no browser). Pick a mod, choose a
+          version, then Install.
+        </p>
+      ) : null}
+
       {watchStatus?.active ? (
         <div className="nxm-box">
           <p style={{ marginBottom: 8 }}>{watchStatus.message}</p>
@@ -351,8 +560,8 @@ export default function ModsBrowser({
       {error ? <p className="mods-error">{error}</p> : null}
       {notice && !error ? <p className="mods-notice">{notice}</p> : null}
 
-      <div className={`mods-columns${selected ? ' with-detail' : ''}`}>
-        <div className="mods-results">
+      <div className={`mods-columns mods-columns-download${selected ? ' with-detail' : ''}`}>
+        <div className="mods-results" ref={resultsRef}>
           {results.length === 0 && !loading && !error ? (
             <p className="muted" style={{ padding: 12 }}>
               {notice
@@ -371,6 +580,20 @@ export default function ModsBrowser({
                   role="button"
                   tabIndex={0}
                   onClick={() => setSelected(mod)}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      {
+                        id: 'open',
+                        label: 'Download options',
+                        onSelect: () => setSelected(mod)
+                      },
+                      {
+                        id: 'site',
+                        label: 'Open on site',
+                        onSelect: () => void window.spire.openExternal(mod.pageUrl)
+                      }
+                    ])
+                  }
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
@@ -395,10 +618,21 @@ export default function ModsBrowser({
               )
             })
           )}
+          <div ref={sentinelRef} className="mods-scroll-sentinel" aria-hidden />
+          {loadingMore ? (
+            <p className="muted mods-scroll-status">Loading more…</p>
+          ) : null}
+          {!loading && !loadingMore && results.length > 0 ? (
+            <p className="muted mods-scroll-status">
+              {hasMore
+                ? `Showing ${results.length}${total > 0 ? ` of ${total}` : ''} — scroll for more`
+                : `Showing ${results.length}${total > 0 ? ` of ${total}` : ''} mods`}
+            </p>
+          ) : null}
         </div>
 
         {selected && listing ? (
-          <section className="mod-detail" aria-label="Mod details">
+          <section className="mod-detail" aria-label="Download options">
             <div className="mod-detail-header">
               <button
                 className="btn btn-ghost"
@@ -408,7 +642,7 @@ export default function ModsBrowser({
                   setDetails(null)
                 }}
               >
-                ← Back
+                ← Results
               </button>
               <button
                 className="btn btn-ghost"
@@ -438,33 +672,86 @@ export default function ModsBrowser({
             </div>
 
             {detailsLoading ? (
-              <p className="muted">Loading details…</p>
+              <p className="muted">Loading download options…</p>
             ) : (
               <>
                 {details?.notice ? <p className="mods-notice">{details.notice}</p> : null}
 
+                {details?.versions && details.versions.length > 0 ? (
+                  <label className="field mod-version-field">
+                    <span>Version</span>
+                    <select
+                      className="mod-version-select"
+                      value={selectedFileId ?? details.versions[0]?.fileId ?? ''}
+                      onChange={(e) => setSelectedFileId(e.target.value)}
+                      aria-label="Choose mod version"
+                    >
+                      {details.versions.map((v) => {
+                        const meta = [
+                          v.releaseType,
+                          v.fileDate ? new Date(v.fileDate).toLocaleDateString() : null,
+                          formatBytes(v.fileLength) || null,
+                          v.primary ? 'primary' : null
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                        return (
+                          <option key={v.fileId} value={v.fileId}>
+                            {v.displayName}
+                            {meta ? ` — ${meta}` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="muted" style={{ marginTop: 4 }}>
+                    {isCurseForge
+                      ? 'Loading versions… If this stays empty, check your CurseForge API key.'
+                      : 'Version list needs an API key when available; Download opens the site Files page.'}
+                  </p>
+                )}
+
+                <h3 className="mod-detail-section">Download</h3>
                 <div className="mod-detail-actions">
-                  <button
-                    className="btn btn-primary"
-                    type="button"
-                    disabled={installingId?.startsWith('slow:')}
-                    onClick={() => void onDownload(listing, 'slow', selectedFileId)}
-                  >
-                    {installingId?.startsWith('slow:') ? '…' : 'Download'}
-                  </button>
-                  <button
-                    className="btn"
-                    type="button"
-                    title={
-                      quickAvailable
-                        ? 'API / CDN one-click when key & Premium (Nexus) allow it'
-                        : 'Needs optional API key (Nexus Premium for CDN)'
-                    }
-                    disabled={!quickAvailable || Boolean(installingId?.startsWith('quick:'))}
-                    onClick={() => void onDownload(listing, 'quick', selectedFileId)}
-                  >
-                    {installingId?.startsWith('quick:') ? '…' : 'Download quickly'}
-                  </button>
+                  {isCurseForge ? (
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={Boolean(
+                        installingId?.startsWith('quick:') || installingId?.startsWith('slow:')
+                      )}
+                      onClick={() => void onDownload(listing, 'quick', selectedFileId)}
+                    >
+                      {installingId?.startsWith('quick:') || installingId?.startsWith('slow:')
+                        ? 'Installing…'
+                        : 'Install'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={installingId?.startsWith('slow:')}
+                        onClick={() => void onDownload(listing, 'slow', selectedFileId)}
+                      >
+                        {installingId?.startsWith('slow:') ? '…' : 'Download'}
+                      </button>
+                      <button
+                        className="btn"
+                        type="button"
+                        title={
+                          quickAvailable
+                            ? 'Premium CDN one-click when your Nexus API key allows it'
+                            : 'Needs optional Nexus Premium API key'
+                        }
+                        disabled={!quickAvailable || Boolean(installingId?.startsWith('quick:'))}
+                        onClick={() => void onDownload(listing, 'quick', selectedFileId)}
+                      >
+                        {installingId?.startsWith('quick:') ? '…' : 'Download quickly'}
+                      </button>
+                    </>
+                  )}
                   <button className="btn" type="button" onClick={() => void onImportFile()}>
                     Import file
                   </button>
@@ -501,70 +788,20 @@ export default function ModsBrowser({
                 <div className="mod-description">
                   {stripHtml(details?.description || listing.summary || 'No description.')}
                 </div>
-
-                {details?.versions && details.versions.length > 0 ? (
-                  <>
-                    <h3 className="mod-detail-section">Versions</h3>
-                    <ul className="mod-versions">
-                      {details.versions.map((v) => (
-                        <li key={v.fileId}>
-                          <label className={`mod-version-row${selectedFileId === v.fileId ? ' selected' : ''}`}>
-                            <input
-                              type="radio"
-                              name="mod-version"
-                              checked={selectedFileId === v.fileId}
-                              onChange={() => setSelectedFileId(v.fileId)}
-                            />
-                            <span>
-                              <strong>{v.displayName}</strong>
-                              <span className="mod-meta">
-                                {v.releaseType ? `${v.releaseType} · ` : ''}
-                                {v.fileDate ? `${new Date(v.fileDate).toLocaleDateString()} · ` : ''}
-                                {formatBytes(v.fileLength)}
-                                {v.primary ? ' · primary' : ''}
-                              </span>
-                            </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : (
-                  <p className="muted" style={{ marginTop: 12 }}>
-                    Version list needs an API key when available; Download still opens the site Files
-                    page.
-                  </p>
-                )}
               </>
             )}
           </section>
         ) : (
-          <aside className="mods-installed">
-            <h2>Installed</h2>
-            {installed.length === 0 ? (
-              <p className="muted">None</p>
-            ) : (
-              <ul>
-                {installed.map((mod) => (
-                  <li key={`${mod.source}:${mod.modId}:${mod.fileName}`}>
-                    <div>
-                      <strong>{mod.name}</strong>
-                      <span className="mod-meta">{mod.fileName}</span>
-                    </div>
-                    <button
-                      className="btn btn-danger"
-                      type="button"
-                      onClick={() => void onRemove(mod)}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <aside className="mods-download-hint">
+            <h2>Download options</h2>
+            <p className="muted">
+              Select a mod from the list to choose a version and download or install it into this
+              instance.
+            </p>
           </aside>
         )}
       </div>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   )
 }

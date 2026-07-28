@@ -141,9 +141,18 @@ export async function searchCurseForge(
     `/mods/search?${params}`
   )
 
+  const mods = (json.data ?? []).map(mapMod)
+  const offset = options.offset ?? 0
+  const limit = options.limit ?? 40
+  const total = json.pagination?.totalCount ?? offset + mods.length
+
   return {
-    mods: (json.data ?? []).map(mapMod),
-    total: json.pagination?.totalCount ?? json.data?.length ?? 0
+    mods,
+    total,
+    hasMore:
+      json.pagination?.totalCount != null
+        ? offset + mods.length < json.pagination.totalCount
+        : mods.length >= limit
   }
 }
 

@@ -24,7 +24,8 @@ const api: SpireApi = {
   openSpireDataFolder: () => ipcRenderer.invoke('spire:openSpireDataFolder'),
   openLogsFolder: () => ipcRenderer.invoke('spire:openLogsFolder'),
   getRecentLogs: (limit) => ipcRenderer.invoke('spire:getRecentLogs', limit),
-  openManageWindow: (instanceId) => ipcRenderer.invoke('spire:openManageWindow', instanceId),
+  openManageWindow: (instanceId, tab) =>
+    ipcRenderer.invoke('spire:openManageWindow', instanceId, tab),
   openRunWindow: (instanceId) => ipcRenderer.invoke('spire:openRunWindow', instanceId),
   focusMainView: (view) => ipcRenderer.invoke('spire:focusMainView', view),
   clearLocalCredentials: () => ipcRenderer.invoke('spire:clearLocalCredentials'),
@@ -51,6 +52,8 @@ const api: SpireApi = {
   listInstalledMods: (instanceId) => ipcRenderer.invoke('spire:listInstalledMods', instanceId),
   removeInstalledMod: (instanceId, source, modId) =>
     ipcRenderer.invoke('spire:removeInstalledMod', instanceId, source, modId),
+  setModEnabled: (instanceId, source, modId, enabled) =>
+    ipcRenderer.invoke('spire:setModEnabled', instanceId, source, modId, enabled),
   getDownloadWatchStatus: () => ipcRenderer.invoke('spire:getDownloadWatchStatus'),
   stopDownloadWatch: () => ipcRenderer.invoke('spire:stopDownloadWatch'),
   onDownloadWatchStatus: (handler) => {
@@ -77,6 +80,8 @@ const api: SpireApi = {
   createWorld: (instanceId, name) => ipcRenderer.invoke('spire:createWorld', instanceId, name),
   renameWorld: (instanceId, worldId, name) =>
     ipcRenderer.invoke('spire:renameWorld', instanceId, worldId, name),
+  duplicateWorld: (instanceId, worldId, newName) =>
+    ipcRenderer.invoke('spire:duplicateWorld', instanceId, worldId, newName),
   deleteWorld: (instanceId, worldId) =>
     ipcRenderer.invoke('spire:deleteWorld', instanceId, worldId),
   openWorldFolder: (instanceId, worldId) =>
@@ -86,6 +91,10 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:upsertServer', instanceId, server),
   deleteServer: (instanceId, serverId) =>
     ipcRenderer.invoke('spire:deleteServer', instanceId, serverId),
+  getInstanceRunLog: (instanceId, limit) =>
+    ipcRenderer.invoke('spire:getInstanceRunLog', instanceId, limit),
+  clearInstanceRunLog: (instanceId) =>
+    ipcRenderer.invoke('spire:clearInstanceRunLog', instanceId),
   checkForUpdate: () => ipcRenderer.invoke('spire:checkForUpdate'),
   openExternal: (url) => ipcRenderer.invoke('spire:openExternal', url),
   onNxmReceived: (handler) => {
@@ -152,6 +161,26 @@ const api: SpireApi = {
     }
     ipcRenderer.on('spire:navigate', listener)
     return () => ipcRenderer.removeListener('spire:navigate', listener)
+  },
+  onManageNavigate: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: { tab?: string }
+    ): void => {
+      if (payload?.tab) handler(payload.tab)
+    }
+    ipcRenderer.on('spire:manageNavigate', listener)
+    return () => ipcRenderer.removeListener('spire:manageNavigate', listener)
+  },
+  onSettingsChanged: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      settings: SpireSettings
+    ): void => {
+      handler(settings)
+    }
+    ipcRenderer.on('spire:settingsChanged', listener)
+    return () => ipcRenderer.removeListener('spire:settingsChanged', listener)
   }
 }
 

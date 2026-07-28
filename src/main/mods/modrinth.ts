@@ -127,6 +127,7 @@ export async function searchModrinth(options: ModSearchOptions = {}): Promise<Mo
   return {
     mods: [],
     total: 0,
+    hasMore: false,
     notice: MODRINTH_HYTALE_NOTICE
   }
 }

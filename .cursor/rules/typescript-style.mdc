@@ -1,0 +1,62 @@
+---
+description: TypeScript style (PSR-12 spirit) for Spire
+globs: "**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# TypeScript style (PSR-12 for this codebase)
+
+Apply PSR-12’s consistency goals to TypeScript/React. Prefer this repo’s established shape over PHP-specific syntax.
+
+## Formatting
+
+- **Indent:** 2 spaces (never tabs). Match neighboring files.
+- **Quotes:** single quotes for strings; double only when required (e.g. JSX attributes with apostrophes).
+- **Semicolons:** omit (ASI), matching existing files.
+- **Braces:** K&R / same-line `{` for functions, blocks, and classes.
+- **Lines:** soft wrap ~100–120 chars; break arguments/imports rather than ultra-long single lines.
+- **Trailing whitespace:** none. Files end with a single newline.
+- **Blank lines:** one blank line after the import block; one between top-level functions; no large empty gaps.
+
+## Naming
+
+- `PascalCase` — types, interfaces, components, classes, enums
+- `camelCase` — functions, methods, variables, props
+- `UPPER_SNAKE_CASE` — module-level constants
+- Booleans read as predicates: `isReady`, `hasKey`, `canInstall`
+- Files: `camelCase.ts` for modules; `PascalCase.tsx` for React components
+
+## Imports
+
+- Group: external → internal (`../`, `./`) → `type` imports
+- Prefer `import type { … }` for type-only imports
+- No unused imports
+
+## Types & control flow
+
+- Prefer explicit return types on exported functions
+- Narrow with type guards / early returns; avoid deep nesting
+- `===` / `!==` only
+- Don’t use `any` unless bridging untyped boundaries; prefer `unknown` + narrow
+- Catch blocks: use `err instanceof Error ? err.message : String(err)`
+
+## React
+
+- Function components only
+- Hooks at top level; extract repeated effect/state patterns into small hooks or shared helpers
+- Keep JSX readable; extract repeated UI blocks into components when used twice+
+
+```typescript
+// ❌
+if (x == null) { return }
+try { await run() } catch (e) {}
+
+// ✅
+if (x == null) return
+try {
+  await run()
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err)
+  throw new Error(message)
+}
+```

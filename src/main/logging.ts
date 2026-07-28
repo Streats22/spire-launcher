@@ -108,6 +108,18 @@ export function getInstanceRunLogPath(instanceId: string): string {
   return join(dir, `${instanceId}.log`)
 }
 
+export function readInstanceRunLog(instanceId: string, limit = 500): string[] {
+  const path = getInstanceRunLogPath(instanceId)
+  if (!existsSync(path)) return []
+  try {
+    const text = readFileSync(path, 'utf8')
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    return lines.slice(-Math.max(1, limit))
+  } catch {
+    return []
+  }
+}
+
 export function appendRunLog(instanceId: string, line: string): void {
   try {
     const path = getInstanceRunLogPath(instanceId)
@@ -124,3 +136,4 @@ export function clearRunLog(instanceId: string): void {
     // ignore
   }
 }
+

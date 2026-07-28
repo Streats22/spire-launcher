@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { dirname } from 'path'
+import { BrowserWindow } from 'electron'
 import type { LocalDataInfo, SpireSettings } from '../shared/types'
 import { SPIRE_EMBEDDED_CURSEFORGE_API_KEY } from './mods/constants'
 import {
@@ -18,7 +19,8 @@ const defaultSettings = (): SpireSettings => ({
   curseForgeApiKey: null,
   nexusApiKey: null,
   checkForUpdates: true,
-  showModPhotos: true
+  showModPhotos: true,
+  theme: 'slate'
 })
 
 export function ensureSpireDirs(): void {
@@ -36,7 +38,10 @@ export function loadSettings(): SpireSettings {
     return settings
   }
   try {
-    return { ...defaultSettings(), ...JSON.parse(readFileSync(path, 'utf8')) }
+    const raw = { ...defaultSettings(), ...JSON.parse(readFileSync(path, 'utf8')) } as SpireSettings
+    const themes = new Set(['slate', 'ember', 'ocean', 'mist', 'midnight'])
+    if (!themes.has(String(raw.theme))) raw.theme = 'slate'
+    return raw
   } catch {
     return defaultSettings()
   }
@@ -52,6 +57,11 @@ export function saveSettings(settings: SpireSettings): void {
 export function updateSettings(patch: Partial<SpireSettings>): SpireSettings {
   const next = { ...loadSettings(), ...patch }
   saveSettings(next)
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('spire:settingsChanged', next)
+    }
+  }
   return next
 }
 

@@ -6,6 +6,8 @@ export type ModSort = 'downloads' | 'updated' | 'name' | 'relevance'
 
 export type InstanceChannel = 'release' | 'pre-release'
 
+export type SpireTheme = 'slate' | 'ember' | 'ocean' | 'mist' | 'midnight'
+
 /**
  * All settings live only on the user's machine.
  * Spire has no user accounts, analytics, or cloud sync.
@@ -20,6 +22,8 @@ export interface SpireSettings {
   checkForUpdates: boolean
   /** Persist gallery visibility on mod detail. Default true. */
   showModPhotos: boolean
+  /** App color theme (main + manage windows). Default slate. */
+  theme: SpireTheme
 }
 
 /** How to install from the mod detail panel. */
@@ -135,12 +139,16 @@ export interface InstalledMod {
   fileName: string
   installedAt: string
   pageUrl: string
+  /** When false, file lives under mods/disabled/ and is not loaded at launch. Default true. */
+  enabled?: boolean
 }
 
 export interface ModSearchResult {
   mods: ModListing[]
   total: number
   notice?: string | null
+  /** True when more pages can be fetched via offset. */
+  hasMore?: boolean
 }
 
 export interface ModInstallResult {
@@ -348,7 +356,7 @@ export interface SpireApi {
   openSpireDataFolder: () => Promise<void>
   openLogsFolder: () => Promise<void>
   getRecentLogs: (limit?: number) => Promise<SpireLogEntry[]>
-  openManageWindow: (instanceId: string) => Promise<void>
+  openManageWindow: (instanceId: string, tab?: string) => Promise<void>
   openRunWindow: (instanceId: string) => Promise<void>
   focusMainView: (view: string) => Promise<void>
   clearLocalCredentials: () => Promise<SpireSettings>
@@ -378,6 +386,12 @@ export interface SpireApi {
   importLocalMod: (instanceId: string) => Promise<ModInstallResult | null>
   listInstalledMods: (instanceId: string) => Promise<InstalledMod[]>
   removeInstalledMod: (instanceId: string, source: ModSource, modId: string) => Promise<void>
+  setModEnabled: (
+    instanceId: string,
+    source: ModSource,
+    modId: string,
+    enabled: boolean
+  ) => Promise<InstalledMod>
   getDownloadWatchStatus: () => Promise<DownloadWatchStatus>
   stopDownloadWatch: () => Promise<void>
   onDownloadWatchStatus: (handler: (status: DownloadWatchStatus) => void) => () => void
@@ -385,6 +399,7 @@ export interface SpireApi {
   listWorlds: (instanceId: string) => Promise<WorldEntry[]>
   createWorld: (instanceId: string, name: string) => Promise<WorldEntry>
   renameWorld: (instanceId: string, worldId: string, name: string) => Promise<WorldEntry>
+  duplicateWorld: (instanceId: string, worldId: string, newName?: string) => Promise<WorldEntry>
   deleteWorld: (instanceId: string, worldId: string) => Promise<void>
   openWorldFolder: (instanceId: string, worldId: string) => Promise<void>
   listServers: (instanceId: string) => Promise<ServerEntry[]>
@@ -393,6 +408,8 @@ export interface SpireApi {
     server: Partial<ServerEntry> & { name: string; address: string }
   ) => Promise<ServerEntry>
   deleteServer: (instanceId: string, serverId: string) => Promise<void>
+  getInstanceRunLog: (instanceId: string, limit?: number) => Promise<string[]>
+  clearInstanceRunLog: (instanceId: string) => Promise<void>
   checkForUpdate: () => Promise<UpdateCheckResult>
   openExternal: (url: string) => Promise<void>
   onNxmReceived: (handler: (nxmUrl: string) => void) => () => void
@@ -426,6 +443,8 @@ export interface SpireApi {
   onLogLine: (handler: (entry: SpireLogEntry) => void) => () => void
   onRunLog: (handler: (event: RunLogEvent) => void) => () => void
   onNavigate: (handler: (view: string) => void) => () => void
+  onManageNavigate: (handler: (tab: string) => void) => () => void
+  onSettingsChanged: (handler: (settings: SpireSettings) => void) => () => void
 }
 
 declare global {

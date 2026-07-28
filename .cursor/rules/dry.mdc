@@ -1,0 +1,42 @@
+---
+description: DRY — do not repeat yourself in Spire
+globs: "**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# DRY (Don’t Repeat Yourself)
+
+## Principle
+
+One concept → one place. If you copy-paste logic or UI, extract it.
+
+## Do
+
+- **Shared constants** live in one module (`constants.ts`, `paths.ts`, `types.ts`) — never hardcode the same URL/ID/path in multiple files
+- **Shared helpers** for repeated patterns (auth retry, progress emit, log + toast, mod install result shaping, path joins)
+- **Reuse existing modules** (`logging`, `manifest`, `windows`, `game/*`) before adding a parallel implementation
+- **UI:** repeated buttons/rows/panels → component or small helper; source-specific UI branches once, not duplicated trees
+- **IPC:** one handler path per action; preload mirrors `SpireApi` 1:1 without copy-paste payloads
+
+## Don’t
+
+- Duplicate CurseForge vs Nexus vs Modrinth flows when a shared `installFromSource` / mapper pattern works
+- Re-declare the same type shape in renderer and main — use `src/shared/types.ts`
+- Copy error-handling blocks; use a tiny helper or early-return wrapper
+- Add a second “almost the same” window/view when props or a tab can extend the first
+
+## When duplication is OK
+
+- Two one-liners that happen to look alike but mean different domain things
+- Generated or intentional platform forks (`darwin` / `win32`) that would be harder to merge than to keep separate
+
+```typescript
+// ❌ same key resolution copied in three files
+const key = process.env.SPIRE_CF || settings.cf || EMBEDDED
+
+// ✅ one resolver
+import { resolveCurseForgeKey } from '../settings'
+const key = resolveCurseForgeKey()
+```
+
+When editing, prefer refactoring the second occurrence into a shared function over leaving two copies.

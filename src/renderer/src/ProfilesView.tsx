@@ -17,6 +17,8 @@ interface ProfilesViewProps {
   auth: HytaleAuthStatus | null
   onOpenMods?: () => void
   onOpenInstall?: () => void
+  /** Hide page title when already framed by Manage window. */
+  compact?: boolean
 }
 
 export default function ProfilesView({
@@ -27,7 +29,8 @@ export default function ProfilesView({
   onToast,
   auth,
   onOpenMods,
-  onOpenInstall
+  onOpenInstall,
+  compact = false
 }: ProfilesViewProps): React.JSX.Element {
   const active = instances.find((i) => i.id === activeId) ?? instances[0] ?? null
   const [name, setName] = useState(active?.name ?? '')
@@ -173,8 +176,12 @@ export default function ProfilesView({
 
   return (
     <div className="page">
-      <h1 className="page-title">Manage instance</h1>
-      <p className="page-sub">{active.name}</p>
+      {compact ? null : (
+        <>
+          <h1 className="page-title">Manage instance</h1>
+          <p className="page-sub">{active.name}</p>
+        </>
+      )}
 
       <div className="panel">
         <h2>Status</h2>

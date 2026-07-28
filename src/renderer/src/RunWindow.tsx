@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RunLogEvent, SpireInstance } from '../../shared/types'
+import { applyTheme, normalizeTheme } from './theme'
 
 interface RunWindowProps {
   instanceId: string
@@ -16,6 +17,11 @@ export default function RunWindow({ instanceId }: RunWindowProps): React.JSX.Ele
   const [lines, setLines] = useState<Line[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const scroller = useRef<HTMLPreElement>(null)
+
+  useEffect(() => {
+    void window.spire.getSettings().then((s) => applyTheme(normalizeTheme(s.theme)))
+    return window.spire.onSettingsChanged((s) => applyTheme(normalizeTheme(s.theme)))
+  }, [])
 
   useEffect(() => {
     void window.spire.listInstances().then((list) => {

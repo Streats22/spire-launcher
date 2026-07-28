@@ -41,19 +41,23 @@ function basePrefs(): Electron.BrowserWindowConstructorOptions['webPreferences']
   }
 }
 
-export function openManageWindow(instanceId: string): void {
+export function openManageWindow(instanceId: string, tab?: string): void {
   const existing = manageWindows.get(instanceId)
+  const hashTab = tab && tab !== 'profile' ? `/${encodeURIComponent(tab)}` : ''
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore()
     existing.focus()
+    if (tab) {
+      existing.webContents.send('spire:manageNavigate', { tab })
+    }
     return
   }
 
   const win = new BrowserWindow({
-    width: 720,
-    height: 780,
-    minWidth: 560,
-    minHeight: 520,
+    width: 1080,
+    height: 820,
+    minWidth: 720,
+    minHeight: 560,
     show: false,
     title: 'Manage instance — Spire',
     backgroundColor: '#1a1f1c',
@@ -69,7 +73,7 @@ export function openManageWindow(instanceId: string): void {
   win.on('closed', () => {
     manageWindows.delete(instanceId)
   })
-  loadRenderer(win, `manage/${encodeURIComponent(instanceId)}`)
+  loadRenderer(win, `manage/${encodeURIComponent(instanceId)}${hashTab}`)
 }
 
 export function openRunWindow(instanceId: string, instanceName?: string): void {

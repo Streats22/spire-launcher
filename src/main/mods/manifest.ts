@@ -1,4 +1,12 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
@@ -15,12 +23,27 @@ export function modsDir(instanceId: string): string {
   return join(getInstancePath(instanceId), 'mods')
 }
 
+export function disabledModsDir(instanceId: string): string {
+  const dir = join(modsDir(instanceId), 'disabled')
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function normalizeMod(mod: InstalledMod): InstalledMod {
+  return {
+    ...mod,
+    modId: String(mod.modId),
+    fileId: String(mod.fileId),
+    enabled: mod.enabled !== false
+  }
+}
+
 export function listInstalledMods(instanceId: string): InstalledMod[] {
   const path = manifestPath(instanceId)
   if (!existsSync(path)) return []
   try {
     const data = JSON.parse(readFileSync(path, 'utf8')) as { mods?: InstalledMod[] }
-    return data.mods ?? []
+    return (data.mods ?? []).map(normalizeMod)
   } catch {
     return []
   }
@@ -32,16 +55,54 @@ function saveManifest(instanceId: string, mods: InstalledMod[]): void {
   writeFileSync(manifestPath(instanceId), JSON.stringify({ mods }, null, 2), 'utf8')
 }
 
+function modFilePath(instanceId: string, mod: InstalledMod): string {
+  const enabled = mod.enabled !== false
+  return join(enabled ? modsDir(instanceId) : disabledModsDir(instanceId), mod.fileName)
+}
+
 export function upsertInstalledMod(instanceId: string, mod: InstalledMod): InstalledMod {
   const mods = listInstalledMods(instanceId).filter(
     (m) => !(m.source === mod.source && String(m.modId) === String(mod.modId))
   )
-  // normalize legacy numeric ids
-  const normalized = { ...mod, modId: String(mod.modId), fileId: String(mod.fileId) }
+  const normalized = normalizeMod(mod)
   mods.push(normalized)
   mods.sort((a, b) => a.name.localeCompare(b.name))
   saveManifest(instanceId, mods)
   return normalized
+}
+
+export function setModEnabled(
+  instanceId: string,
+  source: ModSource,
+  modId: string,
+  enabled: boolean
+): InstalledMod {
+  const mods = listInstalledMods(instanceId)
+  const target = mods.find((m) => m.source === source && String(m.modId) === String(modId))
+  if (!target) throw new Error('Mod not found.')
+
+  const wasEnabled = target.enabled !== false
+  if (wasEnabled === enabled) return target
+
+  const from = join(wasEnabled ? modsDir(instanceId) : disabledModsDir(instanceId), target.fileName)
+  const toDir = enabled ? modsDir(instanceId) : disabledModsDir(instanceId)
+  mkdirSync(toDir, { recursive: true })
+  const to = join(toDir, target.fileName)
+
+  if (existsSync(from)) {
+    if (existsSync(to) && from !== to) {
+      try {
+        unlinkSync(to)
+      } catch {
+        // ignore
+      }
+    }
+    if (from !== to) renameSync(from, to)
+  }
+
+  target.enabled = enabled
+  saveManifest(instanceId, mods)
+  return target
 }
 
 export function removeInstalledMod(
@@ -52,12 +113,16 @@ export function removeInstalledMod(
   const existing = listInstalledMods(instanceId)
   const target = existing.find((m) => m.source === source && String(m.modId) === String(modId))
   if (target) {
-    const filePath = join(modsDir(instanceId), target.fileName)
-    if (existsSync(filePath)) {
-      try {
-        unlinkSync(filePath)
-      } catch {
-        // keep going — manifest should still update
+    for (const path of [
+      join(modsDir(instanceId), target.fileName),
+      join(disabledModsDir(instanceId), target.fileName)
+    ]) {
+      if (existsSync(path)) {
+        try {
+          unlinkSync(path)
+        } catch {
+          // keep going — manifest should still update
+        }
       }
     }
   }
@@ -89,8 +154,12 @@ export async function downloadToModsFolder(
     throw new Error(`Download failed (${res.status})`)
   }
 
-  // Node 18+ / Electron fetch body → Web ReadableStream
   const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
   await pipeline(nodeStream, createWriteStream(dest))
   return dest
+}
+
+/** Resolve on-disk path for a mod (active or disabled). */
+export function resolveModFilePath(instanceId: string, mod: InstalledMod): string {
+  return modFilePath(instanceId, mod)
 }

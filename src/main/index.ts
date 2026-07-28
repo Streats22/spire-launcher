@@ -24,7 +24,7 @@ import {
   updateInstance
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
-import { logError, readPersistedLogs } from './logging'
+import { logError, readPersistedLogs, readInstanceRunLog, clearRunLog } from './logging'
 import {
   getModDetails,
   getModFiles,
@@ -35,6 +35,7 @@ import {
   removeInstalledMod,
   searchMods
 } from './mods/service'
+import { setModEnabled } from './mods/manifest'
 import {
   getDownloadWatchStatus,
   stopDownloadWatch
@@ -50,6 +51,7 @@ import { checkForUpdate } from './updates'
 import {
   createWorld,
   deleteWorld,
+  duplicateWorld,
   getWorldPath,
   listWorlds,
   renameWorld
@@ -89,10 +91,27 @@ function resolveAppIconPath(): string {
   return candidates.find((p) => existsSync(p)) ?? candidates[1]
 }
 
+/** Dock needs transparent padding; prefer the dock-optimized asset when present. */
+function resolveDockIconPath(): string {
+  const candidates = [
+    join(process.resourcesPath, 'icon-dock.png'),
+    join(__dirname, '../../resources/icon-dock.png'),
+    join(app.getAppPath(), 'resources/icon-dock.png'),
+    resolveAppIconPath()
+  ]
+  return candidates.find((p) => existsSync(p)) ?? resolveAppIconPath()
+}
+
 function applyAppIcon(): string {
   const iconPath = resolveAppIconPath()
-  if (process.platform === 'darwin' && app.dock && existsSync(iconPath)) {
-    app.dock.setIcon(nativeImage.createFromPath(iconPath))
+  if (process.platform === 'darwin' && app.dock) {
+    const dockPath = resolveDockIconPath()
+    if (existsSync(dockPath)) {
+      const image = nativeImage.createFromPath(dockPath)
+      // Keep a sensible dock size so Electron doesn’t stretch a huge bitmap oddly.
+      const sized = image.getSize().width > 256 ? image.resize({ width: 256, height: 256 }) : image
+      app.dock.setIcon(sized)
+    }
   }
   return iconPath
 }
@@ -163,8 +182,8 @@ function registerIpc(): void {
   })
   ipcMain.handle('spire:openLogsFolder', () => openLogsFolder())
   ipcMain.handle('spire:getRecentLogs', (_e, limit?: number) => readPersistedLogs(limit ?? 200))
-  ipcMain.handle('spire:openManageWindow', (_e, instanceId: string) => {
-    openManageWindow(instanceId)
+  ipcMain.handle('spire:openManageWindow', (_e, instanceId: string, tab?: string) => {
+    openManageWindow(instanceId, tab)
   })
   ipcMain.handle('spire:openRunWindow', (_e, instanceId: string) => {
     openRunWindow(instanceId)
@@ -257,6 +276,11 @@ function registerIpc(): void {
       removeInstalledMod(instanceId, source, modId)
     }
   )
+  ipcMain.handle(
+    'spire:setModEnabled',
+    (_e, instanceId: string, source: ModSource, modId: string, enabled: boolean) =>
+      setModEnabled(instanceId, source, modId, enabled)
+  )
 
   ipcMain.handle('spire:listWorlds', (_e, instanceId: string) => listWorlds(instanceId))
   ipcMain.handle('spire:createWorld', (_e, instanceId: string, name: string) =>
@@ -266,6 +290,11 @@ function registerIpc(): void {
     'spire:renameWorld',
     (_e, instanceId: string, worldId: string, name: string) =>
       renameWorld(instanceId, worldId, name)
+  )
+  ipcMain.handle(
+    'spire:duplicateWorld',
+    (_e, instanceId: string, worldId: string, newName?: string) =>
+      duplicateWorld(instanceId, worldId, newName)
   )
   ipcMain.handle('spire:deleteWorld', (_e, instanceId: string, worldId: string) => {
     deleteWorld(instanceId, worldId)
@@ -284,6 +313,12 @@ function registerIpc(): void {
   )
   ipcMain.handle('spire:deleteServer', (_e, instanceId: string, serverId: string) => {
     deleteServer(instanceId, serverId)
+  })
+  ipcMain.handle('spire:getInstanceRunLog', (_e, instanceId: string, limit?: number) =>
+    readInstanceRunLog(instanceId, limit ?? 500)
+  )
+  ipcMain.handle('spire:clearInstanceRunLog', (_e, instanceId: string) => {
+    clearRunLog(instanceId)
   })
 
   ipcMain.handle('spire:checkForUpdate', () => checkForUpdate())

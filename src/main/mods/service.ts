@@ -32,6 +32,7 @@ import {
   listInstalledMods,
   modsDir,
   removeInstalledMod,
+  setModEnabled,
   upsertInstalledMod
 } from './manifest'
 import {
@@ -182,7 +183,7 @@ async function installFromCurseForge(
   instanceId: string,
   modId: string,
   fileId: string | undefined,
-  mode: ModInstallMode,
+  _mode: ModInstallMode,
   modName?: string
 ): Promise<ModInstallResult> {
   const apiKey = resolveCurseForgeKey()
@@ -207,13 +208,11 @@ async function installFromCurseForge(
 
   const filesPage = curseForgeFilesPageUrl(listing, fileId)
 
-  // Slow / free path: browser Files; Spire watches Downloads and auto-imports
-  if (mode === 'slow' || !apiKey) {
+  // No API key → browser + Downloads watcher (keyless fallback only).
+  if (!apiKey) {
     beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
     return manualResult(
-      apiKey
-        ? 'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Or use Download quickly for in-app install.'
-        : 'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CF API key (Settings or embedded in code) for Download quickly.',
+      'Opened CurseForge Files. Finish the download in your browser — Spire will auto-import from Downloads. Add a CurseForge API key for one-click in-app install.',
       filesPage,
       true
     )
@@ -225,10 +224,24 @@ async function installFromCurseForge(
     : files.find((f) => f.primary) ?? files[0]
 
   if (!file) {
-    return manualResult('No downloadable files via API — opened Files page.', filesPage)
+    beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
+    return manualResult('No downloadable files via API — opened Files page.', filesPage, true)
   }
 
-  const url = file.downloadUrl || (await getCurseForgeDownloadUrl(apiKey, modId, file.fileId))
+  let url = file.downloadUrl
+  if (!url) {
+    try {
+      url = await getCurseForgeDownloadUrl(apiKey, modId, file.fileId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      beginWatchAfterBrowser(instanceId, 'curseforge', modId, listing.name)
+      return manualResult(
+        `${message} Opened Files page as fallback — Spire will auto-import from Downloads.`,
+        filesPage,
+        true
+      )
+    }
+  }
 
   await downloadToModsFolder(instanceId, url, file.fileName, {
     'x-api-key': apiKey
@@ -241,7 +254,8 @@ async function installFromCurseForge(
     name: listing.name,
     fileName: file.fileName.replace(/[\\/:*?"<>|]/g, '_'),
     installedAt: new Date().toISOString(),
-    pageUrl: listing.pageUrl
+    pageUrl: listing.pageUrl,
+    enabled: true
   })
 
   return { ok: true, message: `Installed “${listing.name}”`, installed }
@@ -459,4 +473,4 @@ export function browseFallbackUrl(source: ModSource, query?: string): string {
   return 'https://modrinth.com/mods'
 }
 
-export { listInstalledMods, removeInstalledMod }
+export { listInstalledMods, removeInstalledMod, setModEnabled }
