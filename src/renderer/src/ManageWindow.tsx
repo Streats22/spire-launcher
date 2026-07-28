@@ -9,7 +9,7 @@ import type {
 import ContextMenu, { useContextMenu } from './ContextMenu'
 import ModsBrowser from './ModsBrowser'
 import ProfilesView from './ProfilesView'
-import { applyTheme, normalizeTheme } from './theme'
+import { applyAppearance } from './theme'
 
 type Tab = 'profile' | 'mods' | 'worlds' | 'prefabs' | 'bootstrap' | 'translations' | 'servers' | 'logs'
 
@@ -104,13 +104,22 @@ export default function ManageWindow({
   }, [refresh])
 
   useEffect(() => {
-    if (settings?.theme) applyTheme(normalizeTheme(settings.theme))
-  }, [settings?.theme])
+    if (!settings) return
+    applyAppearance({
+      theme: settings.theme,
+      density: settings.density,
+      homeLayout: settings.homeLayout
+    })
+  }, [settings?.theme, settings?.density, settings?.homeLayout])
 
   useEffect(() => {
     return window.spire.onSettingsChanged((next) => {
       setSettings(next)
-      applyTheme(normalizeTheme(next.theme))
+      applyAppearance({
+        theme: next.theme,
+        density: next.density,
+        homeLayout: next.homeLayout
+      })
     })
   }, [])
 

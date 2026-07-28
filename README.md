@@ -31,6 +31,8 @@ npm install
 npm run dev
 ```
 
+Appearance lives under **Settings → Appearance**: dark/light/high-contrast themes, readability density, and home grid vs list layout. Choices sync across main, manage, and run windows.
+
 On macOS, `npm run dev` patches the local Electron.app Info.plist so the Dock / menu bar / Cmd+Tab show **Spire** (not “Electron”). Quit and relaunch after `npm install` if the label is stale. Packaged builds (`npm run dist:mac`) produce `Spire.app` with the same name via `productName` / `CFBundleName`.
 
 ## Package

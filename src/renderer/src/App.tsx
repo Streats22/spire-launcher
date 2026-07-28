@@ -11,8 +11,16 @@ import ContextMenu, { useContextMenu } from './ContextMenu'
 import CreateInstanceDialog from './CreateInstanceDialog'
 import VersionsView from './VersionsView'
 import spireLogo from './assets/spire-logo.png'
-import { THEME_OPTIONS, applyTheme, normalizeTheme } from './theme'
-import type { SpireTheme } from '../../shared/types'
+import {
+  DENSITY_OPTIONS,
+  HOME_LAYOUT_OPTIONS,
+  THEME_OPTIONS,
+  applyAppearance,
+  normalizeDensity,
+  normalizeHomeLayout,
+  normalizeTheme
+} from './theme'
+import type { SpireDensity, SpireHomeLayout, SpireTheme } from '../../shared/types'
 
 type View = 'home' | 'settings' | 'versions'
 
@@ -54,13 +62,22 @@ export default function App(): React.JSX.Element {
   }, [refresh])
 
   useEffect(() => {
-    if (settings?.theme) applyTheme(normalizeTheme(settings.theme))
-  }, [settings?.theme])
+    if (!settings) return
+    applyAppearance({
+      theme: settings.theme,
+      density: settings.density,
+      homeLayout: settings.homeLayout
+    })
+  }, [settings?.theme, settings?.density, settings?.homeLayout])
 
   useEffect(() => {
     return window.spire.onSettingsChanged((next) => {
       setSettings(next)
-      applyTheme(normalizeTheme(next.theme))
+      applyAppearance({
+        theme: next.theme,
+        density: next.density,
+        homeLayout: next.homeLayout
+      })
     })
   }, [])
 
@@ -204,8 +221,20 @@ export default function App(): React.JSX.Element {
   }
 
   async function onThemeChange(theme: SpireTheme): Promise<void> {
-    applyTheme(theme)
+    applyAppearance({ theme })
     const next = await window.spire.updateSettings({ theme })
+    setSettings(next)
+  }
+
+  async function onDensityChange(density: SpireDensity): Promise<void> {
+    applyAppearance({ density })
+    const next = await window.spire.updateSettings({ density })
+    setSettings(next)
+  }
+
+  async function onHomeLayoutChange(homeLayout: SpireHomeLayout): Promise<void> {
+    applyAppearance({ homeLayout })
+    const next = await window.spire.updateSettings({ homeLayout })
     setSettings(next)
   }
 
@@ -415,27 +444,74 @@ export default function App(): React.JSX.Element {
 
               <div className="panel">
                 <h2>Appearance</h2>
-                <p className="muted">Applies to the main window and manage sidebar.</p>
-                <div className="theme-grid">
-                  {THEME_OPTIONS.map((opt) => {
-                    const selected = normalizeTheme(settings?.theme) === opt.id
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        className={`theme-card theme-preview-${opt.id}${selected ? ' selected' : ''}`}
-                        onClick={() => void onThemeChange(opt.id)}
-                      >
-                        <span className="theme-swatches" aria-hidden>
-                          <span className="swatch swatch-bg" />
-                          <span className="swatch swatch-nav" />
-                          <span className="swatch swatch-accent" />
-                        </span>
-                        <strong>{opt.label}</strong>
-                        <span className="muted">{opt.blurb}</span>
-                      </button>
-                    )
-                  })}
+                <p className="muted">Applies to the main window, manage sidebar, and run log.</p>
+
+                <div className="appearance-section">
+                  <h3>Color theme</h3>
+                  <span className="muted">Dark, light, and high-contrast palettes.</span>
+                  <div className="theme-grid">
+                    {THEME_OPTIONS.map((opt) => {
+                      const selected = normalizeTheme(settings?.theme) === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`theme-card theme-preview-${opt.id}${selected ? ' selected' : ''}`}
+                          onClick={() => void onThemeChange(opt.id)}
+                        >
+                          <span className="theme-swatches" aria-hidden>
+                            <span className="swatch swatch-bg" />
+                            <span className="swatch swatch-nav" />
+                            <span className="swatch swatch-accent" />
+                          </span>
+                          <strong>{opt.label}</strong>
+                          <span className="muted">{opt.blurb}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="appearance-section">
+                  <h3>Readability</h3>
+                  <span className="muted">Type size and spacing across the app.</span>
+                  <div className="option-grid">
+                    {DENSITY_OPTIONS.map((opt) => {
+                      const selected = normalizeDensity(settings?.density) === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`option-card${selected ? ' selected' : ''}`}
+                          onClick={() => void onDensityChange(opt.id)}
+                        >
+                          <strong>{opt.label}</strong>
+                          <span className="muted">{opt.blurb}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="appearance-section">
+                  <h3>Home layout</h3>
+                  <span className="muted">How instances are arranged on the home screen.</span>
+                  <div className="option-grid">
+                    {HOME_LAYOUT_OPTIONS.map((opt) => {
+                      const selected = normalizeHomeLayout(settings?.homeLayout) === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`option-card${selected ? ' selected' : ''}`}
+                          onClick={() => void onHomeLayoutChange(opt.id)}
+                        >
+                          <strong>{opt.label}</strong>
+                          <span className="muted">{opt.blurb}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -514,7 +590,11 @@ export default function App(): React.JSX.Element {
                   </div>
                 </div>
               ) : (
-                <div className="instance-grid">
+                <div
+                  className={`instance-grid${
+                    normalizeHomeLayout(settings?.homeLayout) === 'list' ? ' layout-list' : ''
+                  }`}
+                >
                   {instances.map((instance) => (
                     <button
                       key={instance.id}
@@ -527,10 +607,12 @@ export default function App(): React.JSX.Element {
                       onContextMenu={(e) => openInstanceMenu(e, instance)}
                     >
                       <img className="instance-icon" src={spireLogo} alt="" />
-                      <span className="instance-card-name">{instance.name}</span>
-                      <span className="instance-card-meta muted">
-                        {instance.channel}
-                        {instance.gameVersion ? ` · ${instance.gameVersion}` : ''}
+                      <span className="instance-card-body">
+                        <span className="instance-card-name">{instance.name}</span>
+                        <span className="instance-card-meta muted">
+                          {instance.channel}
+                          {instance.gameVersion ? ` · ${instance.gameVersion}` : ''}
+                        </span>
                       </span>
                     </button>
                   ))}

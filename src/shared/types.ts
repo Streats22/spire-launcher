@@ -15,7 +15,22 @@ export type ModSort = 'downloads' | 'updated' | 'name' | 'relevance'
 
 export type InstanceChannel = 'release' | 'pre-release'
 
-export type SpireTheme = 'slate' | 'ember' | 'ocean' | 'mist' | 'midnight'
+/** Color themes — dark palette ids plus light / high-contrast options. */
+export type SpireTheme =
+  | 'slate'
+  | 'ember'
+  | 'ocean'
+  | 'mist'
+  | 'midnight'
+  | 'daybreak'
+  | 'fog'
+  | 'contrast'
+
+/** UI scale & spacing for readability. */
+export type SpireDensity = 'compact' | 'comfortable' | 'readable'
+
+/** Home instance browser arrangement. */
+export type SpireHomeLayout = 'grid' | 'list'
 
 /**
  * All settings live only on the user's machine.
@@ -33,6 +48,10 @@ export interface SpireSettings {
   showModPhotos: boolean
   /** App color theme (main + manage windows). Default slate. */
   theme: SpireTheme
+  /** Text size & spacing. Default comfortable. */
+  density: SpireDensity
+  /** Home instances: tile grid or dense list. Default grid. */
+  homeLayout: SpireHomeLayout
 }
 
 /** How to install from the mod detail panel. */
