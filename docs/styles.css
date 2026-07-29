@@ -494,7 +494,200 @@ a:hover {
   font-size: 0.85rem;
 }
 
+.page {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+  animation: rise 0.7s var(--ease) both;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 28px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.crumbs a {
+  color: var(--ink-secondary);
+}
+
+.crumbs a:hover {
+  color: var(--accent);
+}
+
+.page-head h1 {
+  margin: 0 0 12px;
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+}
+
+.page-head .section-lede {
+  margin-bottom: 28px;
+}
+
+.page-cta {
+  margin-top: 40px;
+}
+
+.band-flush {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.download-grid {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.download-grid li {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.download-grid h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.download-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.download-grid code,
+.prose code,
+.faq code,
+.prose-note code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ink-secondary);
+}
+
+.prose-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  max-width: 62ch;
+}
+
+.steps {
+  margin: 0 0 20px;
+  padding-left: 1.2rem;
+  color: var(--ink-secondary);
+  max-width: 52ch;
+}
+
+.steps li {
+  margin-bottom: 10px;
+}
+
+.faq {
+  display: grid;
+  gap: 10px;
+}
+
+.faq details {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 4px 18px 4px;
+}
+
+.faq summary {
+  cursor: pointer;
+  padding: 14px 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  content: '+';
+  float: right;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.faq details[open] summary::after {
+  content: '–';
+}
+
+.faq p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.prose {
+  max-width: 62ch;
+  color: var(--ink-secondary);
+}
+
+.prose h2 {
+  margin: 36px 0 12px;
+  font-size: 1.25rem;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.prose p {
+  margin: 0 0 16px;
+}
+
+.prose ul {
+  margin: 0 0 16px;
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+
+.prose li {
+  margin-bottom: 8px;
+}
+
+.site-links {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  font-size: 0.92rem;
+}
+
+.foot-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+}
+
+.top-nav a[aria-current='page'] {
+  color: var(--ink);
+}
+
 @media (max-width: 860px) {
+  .download-grid {
+    grid-template-columns: 1fr;
+  }
+
   .hero {
     grid-template-columns: 1fr;
     min-height: auto;

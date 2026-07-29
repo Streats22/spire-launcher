@@ -3,7 +3,7 @@
   "productName": "Spire",
   "version": "0.1.0",
   "private": true,
-  "description": "Cross-platform Hytale instance launcher — Prism-style profiles without redistributing the game.",
+  "description": "Spire Launcher — cross-platform Hytale instance launcher. Prism-style profiles, mods & worlds, local-first. Does not redistribute the game.",
   "author": "streats1 <70856472+Streats22@users.noreply.github.com>",
   "engines": {
     "node": ">=22.12.0"

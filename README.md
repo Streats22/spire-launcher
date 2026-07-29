@@ -1,6 +1,8 @@
-# Spire
+# Spire Launcher
 
-**Spire** is a cross-platform **Hytale instance launcher** for macOS, Windows, and Linux.
+**Spire Launcher** (**Spire**) is a cross-platform **Hytale instance launcher** for macOS, Windows, and Linux.
+
+Website: **[streats22.github.io/spire-launcher](https://streats22.github.io/spire-launcher/)** · [Download](https://streats22.github.io/spire-launcher/download/) · [FAQ](https://streats22.github.io/spire-launcher/faq/)
 
 It takes a Prism Launcher–style approach for Hytale: isolated profiles, separate mods and userdata per instance, and a clean launch flow — **without redistributing Hytale itself**. You own the game through official channels; Spire manages profiles and content around it.
 
@@ -126,13 +128,21 @@ To build **all three** official installers in one go, push a `v*` tag or run the
 
 ## Project site
 
-A small static landing page lives in [`docs/`](docs/) for **GitHub Pages**:
+Static pages in [`docs/`](docs/) are published on **GitHub Pages**:
 
-1. Repo **Settings → Pages**
-2. Source: **Deploy from a branch**
-3. Branch: `main` (or your default) · folder: **/docs**
+**https://streats22.github.io/spire-launcher/**
 
-After that it will be at `https://streats22.github.io/spire-launcher/` (or your custom domain).
+| Page | URL |
+| --- | --- |
+| Home | [/](https://streats22.github.io/spire-launcher/) |
+| Download | [/download/](https://streats22.github.io/spire-launcher/download/) |
+| Features | [/features/](https://streats22.github.io/spire-launcher/features/) |
+| FAQ | [/faq/](https://streats22.github.io/spire-launcher/faq/) |
+| Hytale launcher | [/hytale-launcher/](https://streats22.github.io/spire-launcher/hytale-launcher/) |
+
+Sitemap: [`sitemap.xml`](https://streats22.github.io/spire-launcher/sitemap.xml). To re-enable Pages if needed: repo **Settings → Pages** → Deploy from branch `main` · folder **/docs**.
+
+For Google: [Search Console](https://search.google.com/search-console) → add the site URL → submit the sitemap. Indexing can take days to weeks for a new site.
 
 ---
 
