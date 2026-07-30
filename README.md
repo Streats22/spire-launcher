@@ -375,6 +375,8 @@ In the app, open the credits chip in the toolbar (logo + name) for profile and r
 
 ## License & disclaimer
 
+Spire is licensed under the **[MIT License](LICENSE)**.
+
 Spire is a third-party launcher. Hytale is a trademark of Hypixel Studios / Riot Games. Spire does not include or redistribute the Hytale client in its installer; you must obtain the game through official means.
 
 Use mod APIs and stores according to each provider’s terms.

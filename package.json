@@ -5,6 +5,7 @@
   "private": true,
   "description": "Spire Launcher — cross-platform Hytale instance launcher. Prism-style profiles, mods & worlds, local-first. Does not redistribute the game.",
   "author": "streats1 <70856472+Streats22@users.noreply.github.com>",
+  "license": "MIT",
   "engines": {
     "node": ">=22.12.0"
   },
