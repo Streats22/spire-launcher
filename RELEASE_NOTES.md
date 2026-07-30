@@ -58,7 +58,13 @@ macOS / Linux installers are built by GitHub Actions when this tag is published;
 ## Install tips
 
 - **Windows:** run the Setup exe; SmartScreen may warn on unsigned builds — choose More info → Run anyway if you trust the release.
-- **macOS:** Gatekeeper may block unsigned apps — right-click → Open the first time.
+- **macOS (important):** Unsigned builds often show **“Spire is damaged and can’t be opened.”** That is Gatekeeper quarantine, not a bad download. After dragging Spire to Applications, run in Terminal:
+
+```bash
+xattr -cr /Applications/Spire.app
+```
+
+Then open Spire normally (or right-click → Open the first time).
 - **Linux AppImage:** `chmod +x Spire-0.1.0.AppImage && ./Spire-0.1.0.AppImage`
 
 ## What's next

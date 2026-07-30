@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { dirname } from 'path'
 import { BrowserWindow } from 'electron'
 import type { LocalDataInfo, SpireSettings } from '../shared/types'
+import { DEFAULT_CUSTOM_THEME, normalizeCustomTheme } from '../shared/customTheme'
 import { SPIRE_EMBEDDED_CURSEFORGE_API_KEY } from './mods/constants'
 import {
   detectBestGameInstall,
@@ -23,6 +24,10 @@ const THEME_IDS = new Set([
   'midnight',
   'daybreak',
   'fog',
+  'graphite',
+  'black',
+  'white',
+  'custom',
   'contrast'
 ])
 const DENSITY_IDS = new Set(['compact', 'comfortable', 'readable'])
@@ -38,6 +43,7 @@ const defaultSettings = (): SpireSettings => ({
   minimizeOnLaunch: false,
   showModPhotos: true,
   theme: 'slate',
+  customTheme: { ...DEFAULT_CUSTOM_THEME },
   density: 'comfortable',
   homeLayout: 'grid',
   instanceGroups: []
@@ -65,6 +71,7 @@ export function loadSettings(): SpireSettings {
   try {
     const raw = { ...defaultSettings(), ...JSON.parse(readFileSync(path, 'utf8')) } as SpireSettings
     if (!THEME_IDS.has(String(raw.theme))) raw.theme = 'slate'
+    raw.customTheme = normalizeCustomTheme(raw.customTheme)
     if (!DENSITY_IDS.has(String(raw.density))) raw.density = 'comfortable'
     if (!HOME_LAYOUT_IDS.has(String(raw.homeLayout))) raw.homeLayout = 'grid'
     if (!Array.isArray(raw.instanceGroups)) raw.instanceGroups = []

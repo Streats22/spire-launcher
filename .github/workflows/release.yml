@@ -51,6 +51,8 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.tar.gz
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: warn
 
       - name: Attach to GitHub Release
@@ -64,6 +66,8 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.tar.gz
+            release/*.yml
+            release/*.blockmap
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

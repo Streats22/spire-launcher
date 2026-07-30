@@ -1,6 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
-import { join } from 'path'
-import { BrowserWindow } from 'electron'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
+import { basename, join } from 'path'
+import { app, BrowserWindow, dialog } from 'electron'
 import { getSpireRoot } from './paths'
 
 export type LogLevel = 'info' | 'warn' | 'error'
@@ -134,6 +134,40 @@ export function clearRunLog(instanceId: string): void {
     writeFileSync(getInstanceRunLogPath(instanceId), '', 'utf8')
   } catch {
     // ignore
+  }
+}
+
+export async function exportInstanceRunLog(
+  instanceId: string,
+  defaultFileName?: string
+): Promise<{ ok: boolean; canceled: boolean; path: string | null; message: string }> {
+  const logPath = getInstanceRunLogPath(instanceId)
+  if (!existsSync(logPath)) {
+    return { ok: false, canceled: false, path: null, message: 'No run log yet.' }
+  }
+
+  const picked = await dialog.showSaveDialog({
+    title: 'Save instance log',
+    defaultPath: join(
+      app.getPath('documents'),
+      defaultFileName?.trim() || `spire-${instanceId}.log`
+    ),
+    filters: [
+      { name: 'Log files', extensions: ['log', 'txt'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+
+  if (picked.canceled || !picked.filePath) {
+    return { ok: false, canceled: true, path: null, message: 'Save cancelled.' }
+  }
+
+  copyFileSync(logPath, picked.filePath)
+  return {
+    ok: true,
+    canceled: false,
+    path: picked.filePath,
+    message: `Saved log to ${basename(picked.filePath)}`
   }
 }
 

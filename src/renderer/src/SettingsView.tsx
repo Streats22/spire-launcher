@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type {
+  AutoUpdateStatus,
+  CustomThemeColors,
   HytaleAuthStatus,
   InstallStatus,
   LocalDataInfo,
@@ -9,6 +11,7 @@ import type {
   SpireTheme,
   UpdateCheckResult
 } from '../../shared/types'
+import { DEFAULT_CUSTOM_THEME, normalizeCustomTheme } from '../../shared/customTheme'
 import { gameProfileLabel } from '../../shared/hytaleDisplay'
 import {
   DENSITY_OPTIONS,
@@ -18,6 +21,8 @@ import {
   normalizeHomeLayout,
   normalizeTheme
 } from './theme'
+import CustomThemeEditor from './CustomThemeEditor'
+import HytaleAccountSwitcher from './HytaleAccountSwitcher'
 import SettingToggle from './ui/SettingToggle'
 import SettingsCard from './ui/SettingsCard'
 
@@ -39,6 +44,7 @@ interface SettingsViewProps {
   hytaleAuth: HytaleAuthStatus | null
   appVersion: string
   update: UpdateCheckResult | null
+  updateChecking: boolean
   cfKey: string
   nexusKey: string
   onCfKeyChange: (value: string) => void
@@ -47,9 +53,11 @@ interface SettingsViewProps {
   onStatus: (next: InstallStatus) => void
   onHytaleAuth: (next: HytaleAuthStatus) => void
   onUpdate: (next: UpdateCheckResult | null) => void
+  onCheckUpdate: (force?: boolean) => Promise<UpdateCheckResult>
   onToast: (message: string) => void
   onOpenInstall: () => void
   onThemeChange: (theme: SpireTheme) => Promise<void>
+  onCustomThemeChange: (colors: CustomThemeColors) => Promise<void>
   onDensityChange: (density: SpireDensity) => Promise<void>
   onHomeLayoutChange: (layout: SpireHomeLayout) => Promise<void>
 }
@@ -61,6 +69,7 @@ export default function SettingsView({
   hytaleAuth,
   appVersion,
   update,
+  updateChecking,
   cfKey,
   nexusKey,
   onCfKeyChange,
@@ -69,13 +78,22 @@ export default function SettingsView({
   onStatus,
   onHytaleAuth,
   onUpdate,
+  onCheckUpdate,
   onToast,
   onOpenInstall,
   onThemeChange,
+  onCustomThemeChange,
   onDensityChange,
   onHomeLayoutChange
 }: SettingsViewProps): React.JSX.Element {
   const [section, setSection] = useState<SettingsSection>('general')
+  const [autoUpdate, setAutoUpdate] = useState<AutoUpdateStatus | null>(null)
+  const [autoBusy, setAutoBusy] = useState(false)
+
+  useEffect(() => {
+    void window.spire.getAutoUpdateStatus().then(setAutoUpdate)
+    return window.spire.onAutoUpdateStatus(setAutoUpdate)
+  }, [])
 
   async function patch(partial: Partial<SpireSettings>): Promise<SpireSettings> {
     const next = await window.spire.updateSettings(partial)
@@ -175,6 +193,31 @@ export default function SettingsView({
       ? `${hytaleAuth!.accounts.length} saved — pick one under Install`
       : 'Not signed in'
 
+  function updateStatusLabel(): string {
+    if (updateChecking) return 'Checking for updates…'
+    if (!update) return 'Not checked yet'
+    if (update.skipped) return 'Update checks are off'
+    if (update.error) return update.error
+    if (update.updateAvailable) {
+      return update.latestVersion
+        ? `Update available — v${update.latestVersion}`
+        : 'Update available'
+    }
+    if (update.checked) return 'Already up to date'
+    return 'Not checked yet'
+  }
+
+  function updateStatusKind(): 'loading' | 'available' | 'ok' | 'muted' | 'error' {
+    if (updateChecking) return 'loading'
+    if (!update || update.skipped) return 'muted'
+    if (update.error) return 'error'
+    if (update.updateAvailable) return 'available'
+    if (update.checked) return 'ok'
+    return 'muted'
+  }
+
+  const updateKind = updateStatusKind()
+
   return (
     <div className="page page-settings">
       <header className="settings-header">
@@ -186,8 +229,15 @@ export default function SettingsView({
         </div>
         <div className="settings-version muted">
           Spire <strong>v{appVersion || '…'}</strong>
-          {update?.updateAvailable ? (
+          {updateKind === 'loading' ? (
+            <span className="settings-update-status is-loading">
+              <span className="spinner" aria-hidden />
+              Checking…
+            </span>
+          ) : updateKind === 'available' ? (
             <span className="settings-update-badge">Update available</span>
+          ) : updateKind === 'ok' ? (
+            <span className="settings-update-status is-ok">Up to date</span>
           ) : null}
         </div>
       </header>
@@ -212,7 +262,7 @@ export default function SettingsView({
             <section className="panel settings-panel">
               <h2>General</h2>
               <p className="settings-lead muted">
-                App updates and basic Spire behavior. Checks use one public GET when enabled.
+                App updates and basic Spire behavior. Checks use a public version feed when enabled.
               </p>
 
               <SettingToggle
@@ -220,8 +270,8 @@ export default function SettingsView({
                 description="Look for a newer Spire release when the app starts."
                 checked={settings.checkForUpdates}
                 onChange={(enabled) => {
-                  void patch({ checkForUpdates: enabled }).then(async () => {
-                    onUpdate(await window.spire.checkForUpdate())
+                  void patch({ checkForUpdates: enabled }).then(() => {
+                    void onCheckUpdate()
                   })
                 }}
               />
@@ -232,31 +282,91 @@ export default function SettingsView({
                   <button
                     className="btn"
                     type="button"
-                    onClick={() => void window.spire.checkForUpdate().then(onUpdate)}
+                    disabled={updateChecking}
+                    onClick={() => void onCheckUpdate(true)}
                   >
-                    Check now
+                    {updateChecking ? 'Checking…' : 'Check now'}
                   </button>
                 }
               >
-                <span className="muted">
-                  {update?.updateAvailable
-                    ? `v${appVersion} — newer build available`
-                    : update?.error
-                      ? `v${appVersion} — ${update.error}`
-                      : `v${appVersion || '…'} — up to date (or check skipped)`}
-                </span>
+                <div className={`settings-update-line is-${updateKind}`}>
+                  {updateKind === 'loading' ? (
+                    <span className="spinner" aria-hidden />
+                  ) : null}
+                  <span>
+                    <strong>v{appVersion || '…'}</strong>
+                    <span className="muted"> — {updateStatusLabel()}</span>
+                  </span>
+                </div>
               </SettingsCard>
 
-              {update?.updateAvailable && update.releaseUrl ? (
-                <div className="row" style={{ marginTop: 12 }}>
-                  <button
-                    className="btn btn-primary"
-                    type="button"
-                    onClick={() => void window.spire.openExternal(update.releaseUrl!)}
-                  >
-                    Open download page
-                  </button>
+              {update?.updateAvailable ? (
+                <div className="row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+                  {update.autoUpdateSupported || autoUpdate?.supported ? (
+                    autoUpdate?.downloaded ? (
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={autoBusy}
+                        onClick={() => {
+                          onToast('Restarting to finish the update…')
+                          void window.spire.installAutoUpdate()
+                        }}
+                      >
+                        Restart & install
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={autoBusy || autoUpdate?.checking}
+                        onClick={() => {
+                          setAutoBusy(true)
+                          void window.spire
+                            .downloadAutoUpdate()
+                            .then((next) => {
+                              setAutoUpdate(next)
+                              if (next.error) onToast(next.error)
+                              else if (next.downloaded) onToast('Update downloaded — restart to install')
+                              else onToast('Downloading update…')
+                            })
+                            .finally(() => setAutoBusy(false))
+                        }}
+                      >
+                        {autoUpdate?.percent != null && autoUpdate.percent < 100
+                          ? `Downloading… ${autoUpdate.percent}%`
+                          : 'Download & install'}
+                      </button>
+                    )
+                  ) : null}
+                  {update.releaseUrl ? (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => void window.spire.openExternal(update.releaseUrl!)}
+                    >
+                      Open download page
+                    </button>
+                  ) : null}
                 </div>
+              ) : null}
+
+              {autoUpdate?.supported ? (
+                <p className="settings-footnote muted" style={{ marginTop: 12 }}>
+                  Installed builds can download updates from GitHub Releases when the release
+                  includes updater files. Otherwise use the download page.
+                </p>
+              ) : (
+                <p className="settings-footnote muted" style={{ marginTop: 12 }}>
+                  In-app install needs the Setup/installer build. Dev and portable builds open the
+                  release page instead.
+                </p>
+              )}
+
+              {autoUpdate?.error && update?.updateAvailable ? (
+                <p className="settings-footnote muted" style={{ marginTop: 8 }}>
+                  In-app install: {autoUpdate.error}
+                </p>
               ) : null}
             </section>
           ) : null}
@@ -297,6 +407,7 @@ export default function SettingsView({
 
               <SettingsCard
                 title="Hytale accounts"
+                stacked
                 actions={
                   <div className="row">
                     <button className="btn btn-primary" type="button" onClick={onOpenInstall}>
@@ -320,7 +431,17 @@ export default function SettingsView({
                   </div>
                 }
               >
-                <span className="muted">{accountSummary}</span>
+                <span className="muted" style={{ marginBottom: 10, display: 'block' }}>
+                  {accountSummary}
+                </span>
+                {(hytaleAuth?.accounts?.length ?? 0) > 0 ? (
+                  <HytaleAccountSwitcher
+                    auth={hytaleAuth}
+                    onAuth={onHytaleAuth}
+                    onToast={onToast}
+                    onManage={onOpenInstall}
+                  />
+                ) : null}
               </SettingsCard>
             </section>
           ) : null}
@@ -357,8 +478,23 @@ export default function SettingsView({
 
               <div className="appearance-section">
                 <h3>Color theme</h3>
-                <span className="muted">Dark, light, and high-contrast palettes.</span>
-                <div className="theme-grid">
+                <span className="muted">Presets, or Custom with your own saved colors.</span>
+                <div
+                  className="theme-grid"
+                  style={
+                    {
+                      ['--custom-preview-bg' as string]: normalizeCustomTheme(
+                        settings.customTheme
+                      ).background,
+                      ['--custom-preview-surface' as string]: normalizeCustomTheme(
+                        settings.customTheme
+                      ).surface,
+                      ['--custom-preview-accent' as string]: normalizeCustomTheme(
+                        settings.customTheme
+                      ).accent
+                    } as React.CSSProperties
+                  }
+                >
                   {THEME_OPTIONS.map((opt) => {
                     const selected = normalizeTheme(settings.theme) === opt.id
                     return (
@@ -379,6 +515,18 @@ export default function SettingsView({
                     )
                   })}
                 </div>
+
+                {normalizeTheme(settings.theme) === 'custom' ? (
+                  <CustomThemeEditor
+                    value={settings.customTheme ?? DEFAULT_CUSTOM_THEME}
+                    onChange={(colors) => void onCustomThemeChange(colors)}
+                  />
+                ) : (
+                  <p className="muted settings-footnote" style={{ marginTop: 12 }}>
+                    Pick <strong>Custom</strong> to edit and save background, surface, text, and
+                    accent colors (HEX or RGB).
+                  </p>
+                )}
               </div>
 
               <div className="appearance-section">

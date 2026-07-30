@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   HytaleAuthStatus,
   ServerEntry,
@@ -53,6 +53,8 @@ export default function ManageWindow({
   const [worlds, setWorlds] = useState<WorldEntry[]>([])
   const [servers, setServers] = useState<ServerEntry[]>([])
   const [logLines, setLogLines] = useState<string[]>([])
+  const [logAutoScroll, setLogAutoScroll] = useState(true)
+  const logScroller = useRef<HTMLPreElement>(null)
   const [newWorldName, setNewWorldName] = useState('')
   const [newWorldPreset, setNewWorldPreset] = useState<WorldCreatePreset>('adventure')
   const [newWorldSeed, setNewWorldSeed] = useState('')
@@ -102,8 +104,60 @@ export default function ManageWindow({
 
   const refreshLogs = useCallback(async () => {
     if (!activeId) return
-    setLogLines(await window.spire.getInstanceRunLog(activeId, 800))
+    setLogLines(await window.spire.getInstanceRunLog(activeId, 2500))
   }, [activeId])
+
+  useEffect(() => {
+    if (tab !== 'logs' || !activeId) return
+    void refreshLogs()
+    const poll = window.setInterval(() => {
+      void refreshLogs()
+    }, 1500)
+    const off = window.spire.onRunLog((event) => {
+      if (event.instanceId !== activeId) return
+      setLogLines((prev) => {
+        const next = [...prev, `[${event.stream}] ${event.line}`]
+        return next.length > 4000 ? next.slice(-3000) : next
+      })
+    })
+    return () => {
+      window.clearInterval(poll)
+      off()
+    }
+  }, [tab, activeId, refreshLogs])
+
+  useEffect(() => {
+    if (!logAutoScroll || !logScroller.current) return
+    logScroller.current.scrollTop = logScroller.current.scrollHeight
+  }, [logLines, logAutoScroll])
+
+  function onLogScroll(): void {
+    const el = logScroller.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distanceFromBottom > 48) {
+      if (logAutoScroll) setLogAutoScroll(false)
+    } else if (!logAutoScroll) {
+      setLogAutoScroll(true)
+    }
+  }
+
+  async function downloadLog(): Promise<void> {
+    if (!activeId) return
+    const safeName = (instance?.name || 'instance')
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .slice(0, 60)
+    try {
+      const result = await window.spire.exportInstanceRunLog(
+        activeId,
+        `spire-${safeName || 'instance'}.log`
+      )
+      if (!result.canceled) setToast(result.message)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   useEffect(() => {
     void refresh()
@@ -115,9 +169,10 @@ export default function ManageWindow({
     applyAppearance({
       theme: settings.theme,
       density: settings.density,
-      homeLayout: settings.homeLayout
+      homeLayout: settings.homeLayout,
+      customTheme: settings.customTheme
     })
-  }, [settings?.theme, settings?.density, settings?.homeLayout])
+  }, [settings?.theme, settings?.density, settings?.homeLayout, settings?.customTheme])
 
   useEffect(() => {
     return window.spire.onSettingsChanged((next) => {
@@ -125,7 +180,8 @@ export default function ManageWindow({
       applyAppearance({
         theme: next.theme,
         density: next.density,
-        homeLayout: next.homeLayout
+        homeLayout: next.homeLayout,
+        customTheme: next.customTheme
       })
     })
   }, [])
@@ -135,27 +191,12 @@ export default function ManageWindow({
   }, [refreshContent])
 
   useEffect(() => {
-    if (tab === 'logs') void refreshLogs()
-  }, [tab, refreshLogs])
-
-  useEffect(() => {
     if (tab !== 'worlds') setWorldsView('local')
   }, [tab])
 
   useEffect(() => {
     return window.spire.onManageNavigate((next) => setTab(parseTab(next)))
   }, [])
-
-  useEffect(() => {
-    if (!activeId) return
-    return window.spire.onRunLog((event) => {
-      if (event.instanceId !== activeId) return
-      setLogLines((prev) => {
-        const next = [...prev, `[${event.stream}] ${event.line}`]
-        return next.length > 1200 ? next.slice(-800) : next
-      })
-    })
-  }, [activeId])
 
   useEffect(() => {
     if (!toast) return
@@ -346,6 +387,7 @@ export default function ManageWindow({
     tab === 'prefabs' ||
     tab === 'bootstrap' ||
     tab === 'translations' ||
+    tab === 'logs' ||
     (tab === 'worlds' && worldsView === 'download')
 
   return (
@@ -479,7 +521,7 @@ export default function ManageWindow({
         ) : null}
 
         {tab === 'worlds' ? (
-          <div className="page">
+          <div className="page page-manage">
             {worldsView === 'download' && activeId && instance ? (
               <div className="manage-mods-page" style={{ paddingTop: 0 }}>
                 <ModsBrowser
@@ -530,15 +572,24 @@ export default function ManageWindow({
                 <em>Apply to selected</em> after you install or toggle mods.
               </p>
             </div>
-            <div className="worlds-create">
-              <div className="row worlds-create-row">
-                <input
-                  value={newWorldName}
-                  onChange={(e) => setNewWorldName(e.target.value)}
-                  placeholder="World name"
-                  style={{ flex: 1, minWidth: 140 }}
-                />
-                <label className="field worlds-create-field">
+            <div className="panel worlds-create">
+              <h2>Create world</h2>
+              <div className="worlds-create-grid">
+                <label className="field worlds-create-field worlds-create-name">
+                  <span>World name</span>
+                  <input
+                    value={newWorldName}
+                    onChange={(e) => setNewWorldName(e.target.value)}
+                    placeholder="My world"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newWorldName.trim() && !busy) {
+                        e.preventDefault()
+                        void createWorld()
+                      }
+                    }}
+                  />
+                </label>
+                <label className="field worlds-create-field worlds-create-type">
                   <span>Type</span>
                   <select
                     value={newWorldPreset}
@@ -549,7 +600,7 @@ export default function ManageWindow({
                     <option value="flat">Flat</option>
                   </select>
                 </label>
-                <label className="field worlds-create-field">
+                <label className="field worlds-create-field worlds-create-seed">
                   <span>Seed</span>
                   <input
                     value={newWorldSeed}
@@ -559,7 +610,7 @@ export default function ManageWindow({
                   />
                 </label>
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary worlds-create-submit"
                   type="button"
                   disabled={busy || !newWorldName.trim()}
                   onClick={() => void createWorld()}
@@ -723,20 +774,20 @@ export default function ManageWindow({
         ) : null}
 
         {tab === 'servers' ? (
-          <div className="page">
+          <div className="page page-manage">
             <h1 className="page-title">Servers</h1>
             <p className="page-sub">Saved server addresses for this instance.</p>
             <div className="panel">
               <h2>{serverDraft.id ? 'Edit server' : 'Add server'}</h2>
-              <label className="field">
-                <span>Name</span>
-                <input
-                  value={serverDraft.name}
-                  onChange={(e) => setServerDraft((d) => ({ ...d, name: e.target.value }))}
-                />
-              </label>
-              <div className="row">
-                <label className="field" style={{ flex: 2 }}>
+              <div className="manage-form-grid">
+                <label className="field manage-form-span">
+                  <span>Name</span>
+                  <input
+                    value={serverDraft.name}
+                    onChange={(e) => setServerDraft((d) => ({ ...d, name: e.target.value }))}
+                  />
+                </label>
+                <label className="field">
                   <span>Address</span>
                   <input
                     value={serverDraft.address}
@@ -744,21 +795,21 @@ export default function ManageWindow({
                     placeholder="play.example.com"
                   />
                 </label>
-                <label className="field" style={{ flex: 1 }}>
+                <label className="field">
                   <span>Port</span>
                   <input
                     value={serverDraft.port}
                     onChange={(e) => setServerDraft((d) => ({ ...d, port: e.target.value }))}
                   />
                 </label>
+                <label className="field manage-form-span">
+                  <span>Notes</span>
+                  <input
+                    value={serverDraft.notes}
+                    onChange={(e) => setServerDraft((d) => ({ ...d, notes: e.target.value }))}
+                  />
+                </label>
               </div>
-              <label className="field">
-                <span>Notes</span>
-                <input
-                  value={serverDraft.notes}
-                  onChange={(e) => setServerDraft((d) => ({ ...d, notes: e.target.value }))}
-                />
-              </label>
               <div className="row">
                 <button
                   className="btn btn-primary"
@@ -835,10 +886,44 @@ export default function ManageWindow({
         ) : null}
 
         {tab === 'logs' ? (
-          <div className="page">
-            <h1 className="page-title">Instance logs</h1>
-            <p className="page-sub">Output from launches of this instance.</p>
-            <div className="row" style={{ marginBottom: 12 }}>
+          <div className="page page-manage logs-page">
+            <div className="group-header">
+              <div>
+                <h1 className="page-title">Instance logs</h1>
+                <p className="page-sub">Output from launches of this instance.</p>
+              </div>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={!activeId || logLines.length === 0}
+                onClick={() => void downloadLog()}
+              >
+                Download
+              </button>
+            </div>
+            <div className="row logs-toolbar">
+              <label className="check-inline">
+                <input
+                  type="checkbox"
+                  checked={logAutoScroll}
+                  onChange={(e) => setLogAutoScroll(e.target.checked)}
+                />
+                Auto-scroll
+              </label>
+              {!logAutoScroll ? (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    setLogAutoScroll(true)
+                    if (logScroller.current) {
+                      logScroller.current.scrollTop = logScroller.current.scrollHeight
+                    }
+                  }}
+                >
+                  Jump to latest
+                </button>
+              ) : null}
               <button className="btn" type="button" onClick={() => void refreshLogs()}>
                 Refresh
               </button>
@@ -872,9 +957,11 @@ export default function ManageWindow({
                 Open run window
               </button>
             </div>
-            <pre className="manage-log">
+            <pre className="manage-log" ref={logScroller} onScroll={onLogScroll}>
               {logLines.length === 0 ? (
-                <span className="run-log-empty">No run log yet — launch the instance to capture output.</span>
+                <span className="run-log-empty">
+                  No run log yet — launch the instance to capture output.
+                </span>
               ) : (
                 logLines.map((line, i) => <div key={`${i}-${line.slice(0, 24)}`}>{line}</div>)
               )}

@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import type { UpdateCheckResult } from '../shared/types'
-import { DEFAULT_UPDATE_MANIFEST_URL } from '../shared/update'
+import { DEFAULT_UPDATE_MANIFEST_URL, isNewerVersion } from '../shared/update'
+import { checkAutoUpdate, getAutoUpdateStatus } from './autoUpdate'
 import { loadSettings } from './settings'
 
 interface UpdateManifest {
@@ -13,47 +14,50 @@ function updateManifestUrl(): string {
   return process.env['SPIRE_UPDATE_URL']?.trim() || DEFAULT_UPDATE_MANIFEST_URL
 }
 
-/** Compare simple semver-ish strings: 1.2.3 vs 1.2.10 */
-export function isNewerVersion(latest: string, current: string): boolean {
-  const parse = (v: string): number[] =>
-    v
-      .replace(/^v/i, '')
-      .split(/[.+-]/)
-      .map((part) => Number.parseInt(part, 10))
-      .map((n) => (Number.isFinite(n) ? n : 0))
+export { isNewerVersion }
 
-  const a = parse(latest)
-  const b = parse(current)
-  const len = Math.max(a.length, b.length)
-  for (let i = 0; i < len; i++) {
-    const left = a[i] ?? 0
-    const right = b[i] ?? 0
-    if (left > right) return true
-    if (left < right) return false
+function emptyResult(
+  currentVersion: string,
+  patch: Partial<UpdateCheckResult>
+): UpdateCheckResult {
+  return {
+    currentVersion,
+    latestVersion: null,
+    updateAvailable: false,
+    releaseUrl: null,
+    notes: null,
+    checked: false,
+    skipped: false,
+    error: null,
+    autoUpdateSupported: getAutoUpdateStatus().supported,
+    ...patch
   }
-  return false
 }
 
 /**
- * Spire's only first-party network request.
- * Does not send user identity, profiles, keys, or install paths — just a GET for the public manifest.
+ * Spire's only first-party network request (plus optional GitHub Releases feed
+ * when auto-update is supported).
+ * Does not send user identity, profiles, keys, or install paths.
+ *
+ * JSON manifest is the source of truth for “is there an update?”.
+ * electron-updater is best-effort for in-app install when latest.yml exists.
  */
-export async function checkForUpdate(): Promise<UpdateCheckResult> {
+export async function checkForUpdate(force = false): Promise<UpdateCheckResult> {
   const currentVersion = app.getVersion()
   const settings = loadSettings()
+  const autoUpdateSupported = getAutoUpdateStatus().supported
 
-  if (!settings.checkForUpdates) {
-    return {
-      currentVersion,
-      latestVersion: null,
-      updateAvailable: false,
-      releaseUrl: null,
-      notes: null,
-      checked: false,
+  if (!force && !settings.checkForUpdates) {
+    return emptyResult(currentVersion, {
       skipped: true,
-      error: null
-    }
+      autoUpdateSupported
+    })
   }
+
+  let manifestResult = emptyResult(currentVersion, {
+    checked: true,
+    autoUpdateSupported
+  })
 
   try {
     const res = await fetch(updateManifestUrl(), {
@@ -64,44 +68,53 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     })
 
     if (!res.ok) {
-      return {
-        currentVersion,
-        latestVersion: null,
-        updateAvailable: false,
-        releaseUrl: null,
-        notes: null,
+      manifestResult = emptyResult(currentVersion, {
         checked: true,
-        skipped: false,
+        autoUpdateSupported,
         error: `Update check failed (${res.status})`
-      }
-    }
+      })
+    } else {
+      const manifest = (await res.json()) as UpdateManifest
+      const latestVersion = manifest.version?.trim() || null
+      const updateAvailable = Boolean(
+        latestVersion && isNewerVersion(latestVersion, currentVersion)
+      )
 
-    const manifest = (await res.json()) as UpdateManifest
-    const latestVersion = manifest.version?.trim() || null
-    const updateAvailable = Boolean(
-      latestVersion && isNewerVersion(latestVersion, currentVersion)
-    )
-
-    return {
-      currentVersion,
-      latestVersion,
-      updateAvailable,
-      releaseUrl: manifest.url?.trim() || null,
-      notes: manifest.notes?.trim() || null,
-      checked: true,
-      skipped: false,
-      error: null
+      manifestResult = emptyResult(currentVersion, {
+        latestVersion,
+        updateAvailable,
+        releaseUrl: manifest.url?.trim() || null,
+        notes: manifest.notes?.trim() || null,
+        checked: true,
+        autoUpdateSupported
+      })
     }
   } catch (err) {
-    return {
-      currentVersion,
-      latestVersion: null,
-      updateAvailable: false,
-      releaseUrl: null,
-      notes: null,
+    manifestResult = emptyResult(currentVersion, {
       checked: true,
-      skipped: false,
+      autoUpdateSupported,
       error: err instanceof Error ? err.message : String(err)
+    })
+  }
+
+  // Best-effort GitHub Releases feed — never override a healthy JSON result with feed noise.
+  if (autoUpdateSupported) {
+    try {
+      const auto = await checkAutoUpdate()
+      if (auto.version && isNewerVersion(auto.version, currentVersion)) {
+        return {
+          ...manifestResult,
+          latestVersion: auto.version,
+          updateAvailable: true,
+          // Keep manifest error only if we somehow have no manifest success.
+          error: manifestResult.error,
+          autoUpdateSupported: true
+        }
+      }
+    } catch {
+      // Manifest result still useful as fallback.
     }
   }
+
+  return manifestResult
 }

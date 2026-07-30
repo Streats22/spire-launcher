@@ -48,4 +48,4 @@ export const MODIFOLD_BROWSE_URL = 'https://modifold.com'
 export const THUNDERSTORE_HYTALE_API = 'https://thunderstore.io/c/hytale/api/v1/package/'
 export const THUNDERSTORE_HYTALE_BROWSE_URL = 'https://thunderstore.io/c/hytale/'
 
-export const SPIRE_USER_AGENT = 'Spire/0.1.0 (Hytale launcher; +https://github.com/spire-launcher)'
+export const SPIRE_USER_AGENT = 'Spire/0.2.0 (Hytale launcher; +https://github.com/Streats22/spire-launcher)'

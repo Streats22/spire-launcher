@@ -30,7 +30,7 @@ import {
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
 import { exportInstancePack, importInstancePack } from './pack'
-import { logError, readPersistedLogs, readInstanceRunLog, clearRunLog } from './logging'
+import { logError, readPersistedLogs, readInstanceRunLog, clearRunLog, exportInstanceRunLog } from './logging'
 import {
   getModDetails,
   getModFiles,
@@ -59,6 +59,12 @@ import {
   updateSettings
 } from './settings'
 import { clearAllSpireData } from './clearData'
+import {
+  downloadAutoUpdate,
+  getAutoUpdateStatus,
+  initAutoUpdater,
+  installAutoUpdate
+} from './autoUpdate'
 import { checkForUpdate } from './updates'
 import {
   applyModSetToSaves,
@@ -384,8 +390,16 @@ function registerIpc(): void {
   ipcMain.handle('spire:clearInstanceRunLog', (_e, instanceId: string) => {
     clearRunLog(instanceId)
   })
+  ipcMain.handle('spire:exportInstanceRunLog', (_e, instanceId: string, defaultFileName?: string) =>
+    exportInstanceRunLog(instanceId, defaultFileName)
+  )
 
-  ipcMain.handle('spire:checkForUpdate', () => checkForUpdate())
+  ipcMain.handle('spire:checkForUpdate', (_e, force?: boolean) => checkForUpdate(Boolean(force)))
+  ipcMain.handle('spire:getAutoUpdateStatus', () => getAutoUpdateStatus())
+  ipcMain.handle('spire:downloadAutoUpdate', () => downloadAutoUpdate())
+  ipcMain.handle('spire:installAutoUpdate', () => {
+    installAutoUpdate()
+  })
   ipcMain.handle('spire:openExternal', async (_e, url: string) => {
     await shell.openExternal(url)
   })
@@ -477,6 +491,7 @@ if (!gotLock) {
 
     registerNxmProtocol()
     registerIpc()
+    initAutoUpdater()
     createWindow()
 
     // Cold-start nxm link (Windows/Linux)

@@ -15,7 +15,7 @@ export type ModSort = 'downloads' | 'updated' | 'name' | 'relevance'
 
 export type InstanceChannel = 'release' | 'pre-release'
 
-/** Color themes — dark palette ids plus light / high-contrast options. */
+/** Color themes — dark, light, plain, custom, and high-contrast options. */
 export type SpireTheme =
   | 'slate'
   | 'ember'
@@ -24,7 +24,13 @@ export type SpireTheme =
   | 'midnight'
   | 'daybreak'
   | 'fog'
+  | 'graphite'
+  | 'black'
+  | 'white'
+  | 'custom'
   | 'contrast'
+
+export type { CustomThemeColors, CustomThemeScheme } from './customTheme'
 
 /** UI scale & spacing for readability. */
 export type SpireDensity = 'compact' | 'comfortable' | 'readable'
@@ -59,6 +65,8 @@ export interface SpireSettings {
   showModPhotos: boolean
   /** App color theme (main + manage windows). Default slate. */
   theme: SpireTheme
+  /** User colors when theme is `custom`. */
+  customTheme: import('./customTheme').CustomThemeColors
   /** Text size & spacing. Default comfortable. */
   density: SpireDensity
   /** Home instances: tile grid or dense list. Default grid. */
@@ -333,6 +341,18 @@ export interface UpdateCheckResult {
   notes: string | null
   checked: boolean
   skipped: boolean
+  error: string | null
+  /** True when this build can download/install from GitHub Releases in-app. */
+  autoUpdateSupported: boolean
+}
+
+export interface AutoUpdateStatus {
+  supported: boolean
+  checking: boolean
+  available: boolean
+  downloaded: boolean
+  version: string | null
+  percent: number | null
   error: string | null
 }
 
@@ -613,7 +633,15 @@ export interface SpireApi {
   deleteServer: (instanceId: string, serverId: string) => Promise<void>
   getInstanceRunLog: (instanceId: string, limit?: number) => Promise<string[]>
   clearInstanceRunLog: (instanceId: string) => Promise<void>
-  checkForUpdate: () => Promise<UpdateCheckResult>
+  exportInstanceRunLog: (
+    instanceId: string,
+    defaultFileName?: string
+  ) => Promise<{ ok: boolean; canceled: boolean; path: string | null; message: string }>
+  checkForUpdate: (force?: boolean) => Promise<UpdateCheckResult>
+  getAutoUpdateStatus: () => Promise<AutoUpdateStatus>
+  downloadAutoUpdate: () => Promise<AutoUpdateStatus>
+  installAutoUpdate: () => Promise<void>
+  onAutoUpdateStatus: (handler: (status: AutoUpdateStatus) => void) => () => void
   openExternal: (url: string) => Promise<void>
   onNxmReceived: (handler: (nxmUrl: string) => void) => () => void
   /** Official Hytale account (OAuth device code → Hypixel hosts only). */

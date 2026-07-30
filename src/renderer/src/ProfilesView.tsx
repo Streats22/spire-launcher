@@ -189,7 +189,7 @@ export default function ProfilesView({
     progress?.phase === 'resolving'
 
   return (
-    <div className="page">
+    <div className={`page${compact ? ' page-manage' : ''}`}>
       {compact ? null : (
         <>
           <h1 className="page-title">Manage instance</h1>
@@ -271,37 +271,39 @@ export default function ProfilesView({
 
       <div className="panel">
         <h2>Profile</h2>
-        <label className="field">
-          <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Channel</span>
-          <select value={channel} onChange={(e) => setChannel(e.target.value as InstanceChannel)}>
-            <option value="release">Release</option>
-            <option value="pre-release">Pre-release</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Game version</span>
-          <select
-            value={gameVersion}
-            disabled={loadingVersions}
-            onChange={(e) => setGameVersion(e.target.value)}
-          >
-            <option value="">Unpinned (Settings install / channel tip)</option>
-            {gameVersion && !versions.some((v) => v.version === gameVersion) ? (
-              <option value={gameVersion}>{gameVersion} (saved)</option>
-            ) : null}
-            {versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                {v.version}
-                {v.latest ? ' (current)' : ''}
-                {v.clientReady ? ' · playable' : v.installedLocally ? ' · package' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="manage-form-grid">
+          <label className="field">
+            <span>Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Channel</span>
+            <select value={channel} onChange={(e) => setChannel(e.target.value as InstanceChannel)}>
+              <option value="release">Release</option>
+              <option value="pre-release">Pre-release</option>
+            </select>
+          </label>
+          <label className="field manage-form-span">
+            <span>Game version</span>
+            <select
+              value={gameVersion}
+              disabled={loadingVersions}
+              onChange={(e) => setGameVersion(e.target.value)}
+            >
+              <option value="">Unpinned (Settings install / channel tip)</option>
+              {gameVersion && !versions.some((v) => v.version === gameVersion) ? (
+                <option value={gameVersion}>{gameVersion} (saved)</option>
+              ) : null}
+              {versions.map((v) => (
+                <option key={v.version} value={v.version}>
+                  {v.version}
+                  {v.latest ? ' (current)' : ''}
+                  {v.clientReady ? ' · playable' : v.installedLocally ? ' · package' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <p className="muted" style={{ marginTop: 0 }}>
           Install uses official Wharf patches (Client + JRE). The API lists only the current tip per
           channel.

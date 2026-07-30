@@ -4,6 +4,8 @@ release
 dist
 .local-dev
 .tools
+.cursor
+*.tsbuildinfo
 .DS_Store
 *.log
 .env

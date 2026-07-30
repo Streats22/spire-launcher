@@ -23,14 +23,16 @@ export default function RunWindow({ instanceId }: RunWindowProps): React.JSX.Ele
       applyAppearance({
         theme: s.theme,
         density: s.density,
-        homeLayout: s.homeLayout
+        homeLayout: s.homeLayout,
+        customTheme: s.customTheme
       })
     )
     return window.spire.onSettingsChanged((s) =>
       applyAppearance({
         theme: s.theme,
         density: s.density,
-        homeLayout: s.homeLayout
+        homeLayout: s.homeLayout,
+        customTheme: s.customTheme
       })
     )
   }, [])

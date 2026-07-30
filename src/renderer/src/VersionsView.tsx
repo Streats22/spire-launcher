@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types'
 import { gameProfileLabel } from '../../shared/hytaleDisplay'
 import DownloadProgressPanel from './DownloadProgressPanel'
+import HytaleAccountSwitcher from './HytaleAccountSwitcher'
 
 interface VersionsViewProps {
   onToast: (message: string) => void
@@ -167,29 +168,16 @@ export default function VersionsView({
 
           {hasAccounts ? (
             <>
-              {(auth?.accounts?.length ?? 0) > 0 ? (
-                <label className="field">
-                  <span>Active account</span>
-                  <select
-                    value={auth?.activeAccountId ?? ''}
-                    disabled={busy}
-                    onChange={(e) => {
-                      void window.spire.selectHytaleAccount(e.target.value).then(async (status) => {
-                        setAuth(status)
-                        onInstallChanged()
-                        if (status.signedIn && status.sessionValid) await refreshChannels()
-                      })
-                    }}
-                  >
-                    {(auth?.accounts ?? []).map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {gameProfileLabel(a, 'Hytale account')}
-                        {a.id === auth?.activeAccountId ? ' (active)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
+              <HytaleAccountSwitcher
+                auth={auth}
+                disabled={busy}
+                onAuth={(status) => {
+                  setAuth(status)
+                  onInstallChanged()
+                  if (status.signedIn && status.sessionValid) void refreshChannels()
+                }}
+                onToast={onToast}
+              />
 
               {auth?.signedIn ? (
                 <p className="install-status-line">
@@ -208,25 +196,6 @@ export default function VersionsView({
               ) : (
                 <p className="muted install-status-line">No active account — add one below.</p>
               )}
-
-              {auth?.profiles && auth.profiles.length > 0 ? (
-                <label className="field">
-                  <span>Game profile</span>
-                  <select
-                    value={auth.profileUuid ?? ''}
-                    disabled={busy || !auth.signedIn}
-                    onChange={(e) => {
-                      void window.spire.selectHytaleProfile(e.target.value).then(setAuth)
-                    }}
-                  >
-                    {auth.profiles.map((p) => (
-                      <option key={p.uuid} value={p.uuid}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
 
               {device ? (
                 <DeviceLoginCard device={device} onCancel={() => void onCancelLogin()} />

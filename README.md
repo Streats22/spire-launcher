@@ -1,12 +1,12 @@
-# Spire Launcher
+# Spire
 
-**Spire Launcher** (**Spire**) is a cross-platform **Hytale instance launcher** for macOS, Windows, and Linux.
+**Spire** (Spire Launcher) is a cross-platform **Hytale instance launcher** for Windows, macOS, and Linux.
 
-Website: **[streats22.github.io/spire-launcher](https://streats22.github.io/spire-launcher/)** · [Download](https://streats22.github.io/spire-launcher/download/) · [FAQ](https://streats22.github.io/spire-launcher/faq/)
-
-It takes a Prism Launcher–style approach for Hytale: isolated profiles, separate mods and userdata per instance, and a clean launch flow — **without redistributing Hytale itself**. You own the game through official channels; Spire manages profiles and content around it.
+It follows a Prism Launcher–style model for Hytale: isolated profiles, separate mods and userdata per instance, and a straightforward launch flow — **without redistributing Hytale**. You get the game through official channels; Spire manages profiles and content around it.
 
 > Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.
+
+**Links:** [Website](https://streats22.github.io/spire-launcher/) · [Download](https://streats22.github.io/spire-launcher/download/) · [FAQ](https://streats22.github.io/spire-launcher/faq/) · [Releases](https://github.com/Streats22/spire-launcher/releases) · [Credits](#credits)
 
 ---
 
@@ -15,7 +15,6 @@ It takes a Prism Launcher–style approach for Hytale: isolated profiles, separa
 - [Privacy](#privacy)
 - [Features](#features)
 - [Install](#install)
-- [Project site](#project-site)
 - [Quick start](#quick-start)
 - [Profiles & data layout](#profiles--data-layout)
 - [Isolation](#isolation)
@@ -27,22 +26,22 @@ It takes a Prism Launcher–style approach for Hytale: isolated profiles, separa
 - [Develop](#develop)
 - [Package / release builds](#package--release-builds)
 - [Updates](#updates)
-- [Roadmap](#roadmap)
+- [Credits](#credits)
 - [License & disclaimer](#license--disclaimer)
 
 ---
 
 ## Privacy
 
-Spire is an app you install on your machine. That’s it.
+Spire runs entirely on your machine. There is no Spire account and no cloud sync.
 
 | Spire does **not** | Spire **does** |
 | --- | --- |
-| Create Spire accounts | Keep profiles, keys, and mods on disk |
+| Create Spire accounts | Keep profiles, keys, mods, and settings on disk |
 | Cloud-sync your data | Talk to CurseForge / Nexus / Hytale only when **you** use those features |
-| Ship telemetry or analytics | Optionally `GET` a public update JSON (no identity) — can be disabled |
+| Ship telemetry or analytics | Optionally check for updates (public JSON + GitHub Releases for installed builds) — can be disabled |
 
-API keys and OAuth tokens never leave your Spire data folder except to the service you chose (e.g. CurseForge, Hypixel auth).
+API keys and OAuth tokens stay in your Spire data folder except when sent to the service you chose (for example CurseForge or Hypixel auth).
 
 ---
 
@@ -52,23 +51,23 @@ API keys and OAuth tokens never leave your Spire data folder except to the servi
 
 - Create, rename, duplicate, delete, and group instances
 - Import / export **`.spirepack`** (mods + profile; optional worlds)
-- Per-instance **mods**, **userdata**, **prefabs**, **logs**
+- Per-instance **mods**, **userdata**, **prefabs**, **logs**, and **servers**
 - Release / pre-release channels; optional pinned game version
 - Custom Java args; drag-and-drop reorder between groups
 - Home layout: **grid** or **list**
-- Verified isolation: `--user-dir` + Mods junction repaired at launch
+- Launch-time isolation: `--user-dir` verified under Spire; Mods junction repaired when needed
 
 ### Launch & auth
 
 - Sign in with your **Hytale** account (official OAuth device flow)
 - Multi-account + game profile selection
-- Isolated userdata / mods dirs injected for the client
+- Isolated userdata / mods dirs for the client
 - Optional run-log window and minimize-on-launch
 
 ### Game install
 
 - Point at an existing official Hytale install, or
-- Download / manage client builds through Spire’s Install / Versions UI (official channels — Spire does not ship the game binary in the installer)
+- Download / repair client builds in Spire’s **Install** UI (official channels — Spire does not ship the game in its installer)
 
 ### Mods & content browsers
 
@@ -80,7 +79,7 @@ API keys and OAuth tokens never leave your Spire data folder except to the servi
 | **Modtale / Modifold** | Community catalogs |
 | **Modrinth** | Client ready; Hytale listings may be empty until the platform adds them |
 
-Also: **prefabs**, **world packs**, **bootstraps**, **translations**; file import; download-folder watch / auto-import; dependency install where the source provides it.
+Also: **prefabs**, **world packs**, **bootstraps**, **translations**; file import; Downloads-folder watch / auto-import; dependency install when the source provides it.
 
 ### Worlds
 
@@ -91,42 +90,34 @@ Also: **prefabs**, **world packs**, **bootstraps**, **translations**; file impor
 
 ### Manage window
 
-Tabs for profile, mods, worlds, prefabs, bootstrap, translations, servers, and logs.
+Tabs for profile, mods, worlds, prefabs, bootstrap, translations, servers, and logs (scrollable run output with export).
 
 ### Appearance
 
-Themes (slate, ember, ocean, mist, midnight, daybreak, fog, contrast), density, and home layout — applied across main, manage, and run windows.
+- Built-in themes (dark, light, plain grey / black / white, high contrast)
+- **Custom** theme: pick background, surface, text, and accent via color picker, **HEX**, or **RGB** — saved locally
+- Density (compact / comfortable / readable) and home layout
+- Applied across the main, manage, and run windows
 
 ---
 
 ## Install
 
-Prebuilt installers are written to [`release/`](release/) after packaging (and can be attached to GitHub Releases).
+Download the latest build from **[GitHub Releases](https://github.com/Streats22/spire-launcher/releases)**.
 
 | Platform | Artifact | How to install |
 | --- | --- | --- |
-| **Windows** | `Spire-Setup-0.1.0.exe` | Run the setup wizard (choose install folder, desktop shortcut, optional startup) |
-| **Windows (portable)** | `Spire 0.1.0.exe` | No installer — run from any folder |
-| **macOS** | `Spire-0.1.0.dmg` | Open the DMG → drag **Spire** into Applications (**build on macOS** or via [Release workflow](.github/workflows/release.yml)) |
-| **Linux** | `Spire-0.1.0.AppImage` / `.deb` | Prefer these from a Linux CI build; `chmod +x` the AppImage, or `sudo dpkg -i Spire-0.1.0.deb` |
-| **Linux (portable archive)** | `Spire-0.1.0.tar.gz` | Extract and run `Spire` inside — this is the Linux package that can be produced from Windows |
+| **Windows** | `Spire-Setup-<version>.exe` | Run the setup wizard (install folder, desktop shortcut, optional startup) |
+| **Windows (portable)** | `Spire-<version>-portable.exe` | No installer — run from any folder |
+| **macOS** | `Spire-<version>-arm64.dmg` (or `.dmg` / `.zip`) | Open the DMG → drag **Spire** into Applications. If macOS says the app is **damaged**, run `xattr -cr /Applications/Spire.app` once (unsigned build / Gatekeeper). |
+| **Linux** | `Spire-<version>.AppImage` / `.deb` | Prefer these from Linux CI; `chmod +x` the AppImage, or `sudo dpkg -i …` |
+| **Linux (archive)** | `Spire-<version>.tar.gz` | Extract and run `Spire` |
 
 App id: `dev.spire.launcher` · Product name: **Spire**.
 
-### What this machine can produce
+Unsigned Windows builds may show SmartScreen (“Windows protected your PC”) — use **More info → Run anyway** if you trust the release.
 
-| Artifact | Status on Windows host |
-| --- | --- |
-| `Spire-Setup-*.exe` | ✅ `npm run dist:win` |
-| `Spire-*.dmg` | ❌ Needs macOS (`npm run dist:mac` or GitHub Actions `macos-latest`) |
-| `Spire-*.AppImage` / `.deb` | ❌ Needs Linux (symlink / `fpm`); use Actions `ubuntu-latest` |
-| `Spire-*.tar.gz` | ✅ Linux portable bundle via electron-builder on Windows |
-
-To build **all three** official installers in one go, push a `v*` tag or run the **Release** workflow in Actions.
-
----
-
-## Project site
+### Project site
 
 Static pages in [`docs/`](docs/) are published on **GitHub Pages**:
 
@@ -151,7 +142,7 @@ For Google: [Search Console](https://search.google.com/search-console) → add t
 1. Install Spire for your OS.
 2. Open **Install** → sign in with your Hytale account.
 3. Set or download a game client / install path.
-4. **Add Instance** on the home screen (pick channel / version as needed).
+4. **Add instance** on the home screen (pick channel / version as needed).
 5. Open **Mods** (or Manage → Mods) to install content into that profile.
 6. Hit **Launch**.
 
@@ -184,7 +175,7 @@ Spire/
       logs/
 ```
 
-Official Hytale installs are detected under common paths (e.g. `%APPDATA%\Hytale` on Windows). Spire never replaces the need for a legitimate game license.
+Official Hytale installs are detected under common paths (for example `%APPDATA%\Hytale` on Windows). Spire never replaces the need for a legitimate game license.
 
 ---
 
@@ -232,8 +223,8 @@ Optional: check **Include world saves** to add `userdata/Saves/`. Never included
 
 ### Nexus free downloads
 
-1. Prefer **Mod Manager Download** on the site so Spire receives an `nxm://` link, or  
-2. Finish a Slow download — Spire can watch your Downloads folder and import, or  
+1. Prefer **Mod Manager Download** on the site so Spire receives an `nxm://` link, or
+2. Finish a Slow download — Spire can watch your Downloads folder and import, or
 3. Paste an `nxm://` link / use **Import file**.
 
 ---
@@ -252,11 +243,16 @@ What Spire can do:
 
 ## Settings & appearance
 
-- **General / Game** — install path, update check
-- **Launch** — run log window, minimize on launch
-- **Appearance** — theme, density, home layout
-- **Mods & keys** — CurseForge / Nexus keys, show mod photos
-- **Data** — open Spire folder, clear local credentials
+| Section | What it covers |
+| --- | --- |
+| **General** | Update check on launch, version status, download / install update (Setup builds) |
+| **Game** | Official install path, detect / pick folder |
+| **Launch** | Run-log window, minimize on launch |
+| **Appearance** | Theme presets, **custom colors** (HEX / RGB), density, home layout |
+| **Mods & keys** | CurseForge / Nexus keys, show mod photos |
+| **Data** | Open Spire / logs folders; clear keys & sessions; **clear all Spire data** |
+
+Themes include slate, ember, ocean, mist, midnight, daybreak, fog, graphite, black, white, high contrast, and **Custom**. Custom colors are stored in `settings.json` and apply to every Spire window.
 
 ---
 
@@ -266,7 +262,7 @@ What Spire can do:
 | --- | --- |
 | `SPIRE_CURSEFORGE_API_KEY` | CurseForge API key (overrides Settings / embedded) |
 | `SPIRE_NEXUS_API_KEY` | Nexus Premium API key (optional) |
-| `SPIRE_UPDATE_URL` | Override update manifest URL |
+| `SPIRE_UPDATE_URL` | Override the public update manifest URL |
 
 Keys in Settings are equivalent and clearable. Do not commit real keys to git.
 
@@ -274,10 +270,10 @@ Keys in Settings are equivalent and clearable. Do not commit real keys to git.
 
 ## Develop
 
-**Requirements:** Node.js **22.12+** (Electron 43 / electron-builder tooling), npm.
+**Requirements:** Node.js **22.12+** (Electron 43 / electron-builder), npm.
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Streats22/spire-launcher.git
 cd spire-launcher
 npm install
 npm run dev
@@ -285,10 +281,10 @@ npm run dev
 
 | Script | Description |
 | --- | --- |
-| `npm run dev` | Electron + Vite (patches Electron display name on macOS / AppUserModelId on Windows) |
-| `npm run build` | Production renderer/main/preload bundles → `out/` |
+| `npm run dev` | Electron + Vite (patches Electron display name / AppUserModelId) |
+| `npm run build` | Production main / preload / renderer → `out/` |
+| `npm run preview` | Run the production Vite build in Electron |
 | `npm run typecheck` | TypeScript (`tsconfig.node.json` + `tsconfig.web.json`) |
-| `npm run preview` | Preview packaged Vite build |
 | `npm run generate:installer-assets` | Regenerate DMG / NSIS bitmaps from `scripts/generate-installer-assets.py` |
 
 On macOS, quit and relaunch after `npm install` if the Dock still says “Electron”.
@@ -297,7 +293,7 @@ On macOS, quit and relaunch after `npm install` if the Dock still says “Electr
 
 ## Package / release builds
 
-Produces installers under [`release/`](release/).
+Produces installers under [`release/`](release/). Prefer the **Release** GitHub Action for shipping (Windows + macOS + Linux in one tag).
 
 ```bash
 # Current platform’s configured targets
@@ -306,58 +302,52 @@ npm run dist
 # Explicit
 npm run dist:win     # NSIS Setup .exe + portable
 npm run dist:mac     # .dmg + .zip  (must run on macOS)
-npm run dist:linux   # AppImage + .deb
+npm run dist:linux   # AppImage + .deb (+ tar.gz)
 ```
 
-### Platform notes
-
-| Target | Host OS to build | Output (examples) |
+| Target | Build host | Output (examples) |
 | --- | --- | --- |
-| Windows NSIS | Windows (recommended) | `Spire-Setup-<version>.exe` |
-| macOS DMG | **macOS required** (`npm run dist:mac`) | `Spire-<version>.dmg` |
-| Linux AppImage / deb | Linux recommended; can also be built from Windows via electron-builder | `Spire-<version>.AppImage`, `Spire-<version>.deb` |
+| Windows NSIS + portable | Windows | `Spire-Setup-<version>.exe`, `Spire-<version>-portable.exe` |
+| macOS DMG / zip | **macOS** (`npm run dist:mac` or Actions `macos-latest`) | `Spire-<version>*.dmg` / `.zip` |
+| Linux AppImage / deb | Linux recommended (`ubuntu-latest`) | `Spire-<version>.AppImage`, `.deb` |
+| Linux tar.gz | electron-builder (including from Windows) | `Spire-<version>.tar.gz` |
 
-> **Packaging tip:** Use Node **22.12+**. Spire targets `electron-builder@26.15.x` (blockmap / icon tooling is TypeScript-based and needs a current Node).
+> Use Node **22.12+**. Spire targets `electron-builder@26.15.x` (blockmap / icon tooling needs a current Node).
 
 Branded installer chrome:
 
-- **macOS** — DMG background (`resources/dmg-background.png`), drag to Applications
-- **Windows** — custom NSIS welcome / options / finish (`resources/installer.nsh`, `resources/nsis/`), desktop shortcut + startup toggles
+- **macOS** — DMG background, drag to Applications
+- **Windows** — custom NSIS welcome / options / finish, desktop shortcut + startup toggles
 - **Linux** — AppImage (portable) and `.deb` (system install)
-
-Regenerate art after icon/theme changes:
 
 ```bash
 npm run generate:installer-assets
 ```
 
-### CI tip
-
-Use GitHub Actions (or similar) with `macos-latest`, `windows-latest`, and `ubuntu-latest` jobs so all three artifacts are produced on every release tag.
+Tag a `v*` release or run the **Release** workflow so Actions attach installers **and** updater metadata (`latest.yml`, `.blockmap`).
 
 ---
 
 ## Updates
 
-1. Bump `"version"` in `package.json`.
-2. Update [`updates/latest.json`](updates/latest.json) on the default branch (or point `SPIRE_UPDATE_URL` at your manifest).
-3. Publish installers for each OS.
+Spire can check for a newer release in two ways:
 
-Users with **Check for updates** enabled fetch that JSON only — no account info is sent.
+1. **Public manifest** — [`updates/latest.json`](updates/latest.json) on the default branch (override with `SPIRE_UPDATE_URL`). One anonymous `GET`; no identity is sent. Toggle under Settings → General.
+2. **In-app install** — installed **Setup** builds use `electron-updater` against GitHub Releases (`latest.yml` / blockmaps). Portable and `npm run dev` builds open the release page instead.
+
+**To publish an update:**
+
+1. Bump `"version"` in `package.json`.
+2. Update [`updates/latest.json`](updates/latest.json) on the default branch.
+3. Tag / run the Release workflow so installers and updater files are attached to the GitHub release.
 
 ---
 
-## Roadmap
+## Credits
 
-- [x] Local profiles (create / rename / notes / duplicate / delete / groups)
-- [x] Local credentials (CurseForge / Nexus) — clearable, never uploaded
-- [x] Optional single-call update check
-- [x] CurseForge + Nexus + Thunderstore (+ community catalogs)
-- [x] Nexus `nxm://` handler
-- [x] Worlds create presets + apply mod set to saves
-- [x] Rich mod descriptions (Markdown / HTML) + resizable detail pane
-- [x] Confirm Hytale client isolation flags
-- [x] Pack import-export (`.spirepack`)
+Spire is built by **[streats22](https://github.com/Streats22)** // streatsdesign.
+
+In the app, open the credits chip in the toolbar (logo + name) for profile and repository links.
 
 ---
 

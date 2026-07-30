@@ -1,7 +1,7 @@
 {
   "name": "spire-launcher",
   "productName": "Spire",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Spire Launcher — cross-platform Hytale instance launcher. Prism-style profiles, mods & worlds, local-first. Does not redistribute the game.",
   "author": "streats1 <70856472+Streats22@users.noreply.github.com>",
@@ -126,11 +126,19 @@
         "tar.gz"
       ],
       "artifactName": "${productName}-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Streats22",
+        "repo": "spire-launcher"
+      }
+    ]
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "dompurify": "^3.4.12",
+    "electron-updater": "^6.8.9",
     "fflate": "^0.8.3",
     "marked": "^18.0.7"
   },

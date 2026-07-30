@@ -125,7 +125,22 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:getInstanceRunLog', instanceId, limit),
   clearInstanceRunLog: (instanceId) =>
     ipcRenderer.invoke('spire:clearInstanceRunLog', instanceId),
-  checkForUpdate: () => ipcRenderer.invoke('spire:checkForUpdate'),
+  exportInstanceRunLog: (instanceId, defaultFileName) =>
+    ipcRenderer.invoke('spire:exportInstanceRunLog', instanceId, defaultFileName),
+  checkForUpdate: (force) => ipcRenderer.invoke('spire:checkForUpdate', force),
+  getAutoUpdateStatus: () => ipcRenderer.invoke('spire:getAutoUpdateStatus'),
+  downloadAutoUpdate: () => ipcRenderer.invoke('spire:downloadAutoUpdate'),
+  installAutoUpdate: () => ipcRenderer.invoke('spire:installAutoUpdate'),
+  onAutoUpdateStatus: (handler) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      status: import('../shared/types').AutoUpdateStatus
+    ): void => {
+      handler(status)
+    }
+    ipcRenderer.on('spire:autoUpdateStatus', listener)
+    return () => ipcRenderer.removeListener('spire:autoUpdateStatus', listener)
+  },
   openExternal: (url) => ipcRenderer.invoke('spire:openExternal', url),
   onNxmReceived: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, url: string): void => {

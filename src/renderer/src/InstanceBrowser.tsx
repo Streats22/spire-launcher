@@ -77,14 +77,17 @@ export default function InstanceBrowser({
         items: instancesInGroup(instances, g.id)
       })
     }
-    rows.push({
-      groupId: null,
-      title: orderedGroups.length > 0 ? 'Ungrouped' : 'Instances',
-      items: [
-        ...instancesInGroup(instances, null),
-        ...orphaned
-      ].sort((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0) || a.name.localeCompare(b.name))
-    })
+    const ungrouped = [
+      ...instancesInGroup(instances, null),
+      ...orphaned
+    ].sort((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0) || a.name.localeCompare(b.name))
+
+    // Hide empty Ungrouped when real groups exist; keep a section when there are no groups.
+    if (orderedGroups.length === 0) {
+      rows.push({ groupId: null, title: 'Instances', items: ungrouped })
+    } else if (ungrouped.length > 0) {
+      rows.push({ groupId: null, title: 'Ungrouped', items: ungrouped })
+    }
     return rows
   }, [instances, orderedGroups, orphaned])
 

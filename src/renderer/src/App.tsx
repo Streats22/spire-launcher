@@ -7,9 +7,11 @@ import type {
   SpireSettings,
   UpdateCheckResult
 } from '../../shared/types'
-import { gameProfileLabel } from '../../shared/hytaleDisplay'
+import type { CustomThemeColors } from '../../shared/customTheme'
 import ContextMenu, { useContextMenu } from './ContextMenu'
 import CreateInstanceDialog from './CreateInstanceDialog'
+import CreditsDialog from './CreditsDialog'
+import HytaleAccountSwitcher from './HytaleAccountSwitcher'
 import InstanceBrowser from './InstanceBrowser'
 import SettingsView from './SettingsView'
 import VersionsView from './VersionsView'
@@ -35,8 +37,10 @@ export default function App(): React.JSX.Element {
   const [nexusKey, setNexusKey] = useState('')
   const [appVersion, setAppVersion] = useState('')
   const [update, setUpdate] = useState<UpdateCheckResult | null>(null)
+  const [updateChecking, setUpdateChecking] = useState(true)
   const [creating, setCreating] = useState(false)
   const [hytaleAuth, setHytaleAuth] = useState<HytaleAuthStatus | null>(null)
+  const [creditsOpen, setCreditsOpen] = useState(false)
   const { menu, openMenu, closeMenu } = useContextMenu()
 
   const refresh = useCallback(async () => {
@@ -65,9 +69,10 @@ export default function App(): React.JSX.Element {
     applyAppearance({
       theme: settings.theme,
       density: settings.density,
-      homeLayout: settings.homeLayout
+      homeLayout: settings.homeLayout,
+      customTheme: settings.customTheme
     })
-  }, [settings?.theme, settings?.density, settings?.homeLayout])
+  }, [settings?.theme, settings?.density, settings?.homeLayout, settings?.customTheme])
 
   useEffect(() => {
     return window.spire.onSettingsChanged((next) => {
@@ -77,7 +82,8 @@ export default function App(): React.JSX.Element {
       applyAppearance({
         theme: next.theme,
         density: next.density,
-        homeLayout: next.homeLayout
+        homeLayout: next.homeLayout,
+        customTheme: next.customTheme
       })
     })
   }, [])
@@ -87,14 +93,26 @@ export default function App(): React.JSX.Element {
       void refresh()
       void window.spire.getHytaleAuthStatus().then(setHytaleAuth)
       setUpdate(null)
+      setUpdateChecking(false)
       setView('home')
       setCreating(false)
     })
   }, [refresh])
 
-  useEffect(() => {
-    void window.spire.checkForUpdate().then(setUpdate)
+  const runUpdateCheck = useCallback(async (force = false): Promise<UpdateCheckResult> => {
+    setUpdateChecking(true)
+    try {
+      const next = await window.spire.checkForUpdate(force)
+      setUpdate(next)
+      return next
+    } finally {
+      setUpdateChecking(false)
+    }
   }, [])
+
+  useEffect(() => {
+    void runUpdateCheck()
+  }, [runUpdateCheck])
 
   const active = useMemo(
     () => instances.find((i) => i.id === settings?.activeInstanceId) ?? instances[0] ?? null,
@@ -236,8 +254,14 @@ export default function App(): React.JSX.Element {
   }
 
   async function onThemeChange(theme: SpireTheme): Promise<void> {
-    applyAppearance({ theme })
+    applyAppearance({ theme, customTheme: settings?.customTheme })
     const next = await window.spire.updateSettings({ theme })
+    setSettings(next)
+  }
+
+  async function onCustomThemeChange(customTheme: CustomThemeColors): Promise<void> {
+    applyAppearance({ theme: 'custom', customTheme })
+    const next = await window.spire.updateSettings({ theme: 'custom', customTheme })
     setSettings(next)
   }
 
@@ -280,15 +304,26 @@ export default function App(): React.JSX.Element {
             <strong>{active.name}</strong>
           </span>
         ) : null}
-        {hytaleAuth?.signedIn ? (
-          <span className="toolbar-chip" title="Active game profile">
-            {gameProfileLabel(hytaleAuth)}
-            {(hytaleAuth.accounts?.length ?? 0) > 1
-              ? ` · ${hytaleAuth.accounts.length}`
-              : ''}
-          </span>
+        {(hytaleAuth?.accounts?.length ?? 0) > 0 || hytaleAuth?.signedIn ? (
+          <HytaleAccountSwitcher
+            auth={hytaleAuth}
+            onAuth={setHytaleAuth}
+            onToast={setToast}
+            onManage={() => setView('versions')}
+            compact
+          />
         ) : null}
         <div className="toolbar-actions">
+          <button
+            className="toolbar-credits"
+            type="button"
+            onClick={() => setCreditsOpen(true)}
+            title="Credits"
+            aria-label="Credits"
+          >
+            <img className="toolbar-credits-logo" src={spireLogo} alt="" />
+            <span className="toolbar-credits-text">Credits</span>
+          </button>
           <button
             className={`btn btn-ghost${view === 'versions' ? ' active' : ''}`}
             type="button"
@@ -315,15 +350,34 @@ export default function App(): React.JSX.Element {
             Update available: {update.latestVersion}
             {update.notes ? ` — ${update.notes}` : ''}
           </span>
-          {update.releaseUrl ? (
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => void window.spire.openExternal(update.releaseUrl!)}
-            >
-              Download
-            </button>
-          ) : null}
+          <div className="row">
+            {update.autoUpdateSupported ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => {
+                  void window.spire.downloadAutoUpdate().then((status) => {
+                    if (status.error) setToast(status.error)
+                    else if (status.downloaded) {
+                      setToast('Update ready — restarting…')
+                      void window.spire.installAutoUpdate()
+                    } else setToast('Downloading update…')
+                  })
+                }}
+              >
+                Install update
+              </button>
+            ) : null}
+            {update.releaseUrl ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void window.spire.openExternal(update.releaseUrl!)}
+              >
+                {update.autoUpdateSupported ? 'Release page' : 'Download'}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -337,6 +391,7 @@ export default function App(): React.JSX.Element {
               hytaleAuth={hytaleAuth}
               appVersion={appVersion}
               update={update}
+              updateChecking={updateChecking}
               cfKey={cfKey}
               nexusKey={nexusKey}
               onCfKeyChange={setCfKey}
@@ -345,9 +400,11 @@ export default function App(): React.JSX.Element {
               onStatus={setStatus}
               onHytaleAuth={setHytaleAuth}
               onUpdate={setUpdate}
+              onCheckUpdate={runUpdateCheck}
               onToast={setToast}
               onOpenInstall={() => setView('versions')}
               onThemeChange={onThemeChange}
+              onCustomThemeChange={onCustomThemeChange}
               onDensityChange={onDensityChange}
               onHomeLayoutChange={onHomeLayoutChange}
             />
@@ -485,6 +542,8 @@ export default function App(): React.JSX.Element {
           })()
         }}
       />
+
+      {creditsOpen ? <CreditsDialog onClose={() => setCreditsOpen(false)} /> : null}
 
       {toast ? <div className="toast">{toast}</div> : null}
       <ContextMenu menu={menu} onClose={closeMenu} />
