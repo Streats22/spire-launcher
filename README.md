@@ -6,7 +6,7 @@ It follows a Prism Launcher–style model for Hytale: isolated profiles, separat
 
 > Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.
 
-**Links:** [Website](https://streats22.github.io/spire-launcher/) · [Download](https://streats22.github.io/spire-launcher/download/) · [Docs / Roadmap](https://streats22.github.io/spire-launcher/docs/) · [FAQ](https://streats22.github.io/spire-launcher/faq/) · [Releases](https://github.com/Streats22/spire-launcher/releases) · [Credits](#credits)
+**Links:** [Website](https://streats22.github.io/spire-launcher/) · [Download](https://streats22.github.io/spire-launcher/download/) · [Docs / Roadmap](https://streats22.github.io/spire-launcher/docs/) · [Privacy](https://streats22.github.io/spire-launcher/privacy/) · [FAQ](https://streats22.github.io/spire-launcher/faq/) · [Releases](https://github.com/Streats22/spire-launcher/releases) · [Credits](#credits)
 
 ---
 
@@ -35,6 +35,8 @@ It follows a Prism Launcher–style model for Hytale: isolated profiles, separat
 ## Privacy
 
 Spire runs entirely on your machine. There is no Spire account and no cloud sync.
+
+Full policy: **[Privacy Policy](https://streats22.github.io/spire-launcher/privacy/)** ([`PRIVACY.md`](PRIVACY.md)).
 
 | Spire does **not** | Spire **does** |
 | --- | --- |
@@ -129,6 +131,7 @@ Static pages in [`docs/`](docs/) are published on **GitHub Pages**:
 | Home | [/](https://streats22.github.io/spire-launcher/) |
 | Download | [/download/](https://streats22.github.io/spire-launcher/download/) |
 | Docs / Roadmap | [/docs/](https://streats22.github.io/spire-launcher/docs/) |
+| Privacy | [/privacy/](https://streats22.github.io/spire-launcher/privacy/) |
 | Features | [/features/](https://streats22.github.io/spire-launcher/features/) |
 | FAQ | [/faq/](https://streats22.github.io/spire-launcher/faq/) |
 | Hytale launcher | [/hytale-launcher/](https://streats22.github.io/spire-launcher/hytale-launcher/) |

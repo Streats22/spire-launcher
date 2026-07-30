@@ -661,6 +661,32 @@ a:hover {
   letter-spacing: -0.02em;
 }
 
+.policy-meta {
+  margin: -12px 0 0;
+}
+
+.policy-bullets {
+  margin: 0 0 16px;
+  padding-left: 1.2em;
+  color: var(--ink-secondary);
+}
+
+.policy-bullets li {
+  margin: 0 0 8px;
+}
+
+.policy-bullets code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.page-head h3,
+.band h3 {
+  margin: 20px 0 8px;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
 .band-flush {
   padding-left: 0;
   padding-right: 0;
