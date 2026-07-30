@@ -1,6 +1,7 @@
 import { useMemo, useState, type MouseEvent } from 'react'
 import type { InstanceGroup, SpireHomeLayout, SpireInstance } from '../../shared/types'
-import spireLogo from './assets/spire-logo.png'
+import InstanceIcon from './InstanceIcon'
+import { useInstanceCustomIcons } from './InstanceIconPicker'
 
 const DRAG_MIME = 'application/x-spire-instance'
 
@@ -56,6 +57,7 @@ export default function InstanceBrowser({
   const [renameValue, setRenameValue] = useState('')
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('New group')
+  const customIcons = useInstanceCustomIcons(instances)
 
   const orderedGroups = useMemo(() => sortGroups(groups), [groups])
   const knownGroupIds = useMemo(() => new Set(orderedGroups.map((g) => g.id)), [orderedGroups])
@@ -236,7 +238,7 @@ export default function InstanceBrowser({
             No instances yet
           </p>
           <p style={{ margin: '0 0 14px' }}>
-            Create a profile, then install the full client under Install (or point Settings at an
+            Create a profile, then install the full client under Accounts (or point Settings at an
             official install).
           </p>
           <div className="row">
@@ -252,7 +254,7 @@ export default function InstanceBrowser({
               Import pack…
             </button>
             <button className="btn" type="button" onClick={onOpenInstall}>
-              Install
+              Accounts
             </button>
           </div>
         </div>
@@ -388,7 +390,11 @@ export default function InstanceBrowser({
                         })
                       }}
                     >
-                      <img className="instance-icon" src={spireLogo} alt="" draggable={false} />
+                      <InstanceIcon
+                        instance={instance}
+                        customSrc={customIcons[instance.id] ?? null}
+                        draggable={false}
+                      />
                       <span className="instance-card-body">
                         <span className="instance-card-name">{instance.name}</span>
                         <span className="instance-card-meta muted">

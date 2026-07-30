@@ -148,7 +148,7 @@ export default function VersionsView({
     <div className="page page-install">
       <header className="install-header">
         <div>
-          <h1 className="page-title">Install</h1>
+          <h1 className="page-title">Accounts & install</h1>
           <p className="page-sub">
             Official Hytale account, Client, and JRE — tokens stay on this machine.
           </p>

@@ -1,14 +1,17 @@
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync
 } from 'fs'
-import { join } from 'path'
+import { basename, extname, join } from 'path'
 import { randomUUID } from 'crypto'
+import { dialog } from 'electron'
 import type {
   CreateInstanceOptions,
   InstanceChannel,
@@ -18,8 +21,12 @@ import type {
   SpireInstance,
   SpireSettings
 } from '../shared/types'
+import { normalizeInstanceIconId } from '../shared/instanceIcons'
 import { getInstancesRoot } from './paths'
 import { loadSettings, updateSettings } from './settings'
+
+const CUSTOM_ICON_BASENAME = 'icon'
+const CUSTOM_ICON_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
 
 function normalizeInstance(raw: SpireInstance): SpireInstance {
   const channel: InstanceChannel =
@@ -28,12 +35,19 @@ function normalizeInstance(raw: SpireInstance): SpireInstance {
     typeof raw.groupId === 'string' && raw.groupId.trim() ? raw.groupId.trim() : null
   const sortIndex =
     typeof raw.sortIndex === 'number' && Number.isFinite(raw.sortIndex) ? raw.sortIndex : 0
+  const iconId = normalizeInstanceIconId(raw.iconId)
+  const iconFile =
+    typeof raw.iconFile === 'string' && raw.iconFile.trim()
+      ? basename(raw.iconFile.trim())
+      : null
   return {
     ...raw,
     channel,
     gameVersion: raw.gameVersion ?? null,
     groupId,
-    sortIndex
+    sortIndex,
+    iconId,
+    iconFile
   }
 }
 
@@ -126,7 +140,9 @@ export function createInstance(options: CreateInstanceOptions | string): SpireIn
     channel,
     gameVersion,
     groupId,
-    sortIndex: nextSortIndex(groupId)
+    sortIndex: nextSortIndex(groupId),
+    iconId: normalizeInstanceIconId(opts.iconId),
+    iconFile: null
   }
   ensureInstanceLayout(id)
   writeMeta(instance)
@@ -141,6 +157,18 @@ export function createInstance(options: CreateInstanceOptions | string): SpireIn
 export function updateInstance(id: string, patch: InstancePatch): SpireInstance {
   const current = getInstance(id)
   if (!current) throw new Error('Profile not found.')
+
+  let iconFile =
+    patch.iconFile !== undefined
+      ? patch.iconFile?.trim()
+        ? basename(patch.iconFile.trim())
+        : null
+      : (current.iconFile ?? null)
+
+  if (patch.iconFile === null) {
+    removeCustomIconFiles(id, current.iconFile)
+    iconFile = null
+  }
 
   const next: SpireInstance = {
     ...current,
@@ -164,10 +192,93 @@ export function updateInstance(id: string, patch: InstancePatch): SpireInstance 
       patch.sortIndex !== undefined && Number.isFinite(patch.sortIndex)
         ? patch.sortIndex
         : (current.sortIndex ?? 0),
+    iconId:
+      patch.iconId !== undefined
+        ? normalizeInstanceIconId(patch.iconId)
+        : normalizeInstanceIconId(current.iconId),
+    iconFile,
     updatedAt: new Date().toISOString()
   }
   writeMeta(next)
   return next
+}
+
+function removeCustomIconFiles(id: string, keepName?: string | null): void {
+  const root = instanceDir(id)
+  if (!existsSync(root)) return
+  for (const name of readdirSync(root)) {
+    if (keepName && name === keepName) continue
+    if (!name.startsWith(`${CUSTOM_ICON_BASENAME}.`)) continue
+    const ext = extname(name).toLowerCase()
+    if (!CUSTOM_ICON_EXTS.has(ext)) continue
+    try {
+      unlinkSync(join(root, name))
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+}
+
+function mimeForExt(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
+    case '.webp':
+      return 'image/webp'
+    case '.gif':
+      return 'image/gif'
+    default:
+      return 'image/png'
+  }
+}
+
+/** Data URL for a custom instance icon, or null when using a preset. */
+export function getInstanceIconDataUrl(id: string): string | null {
+  const instance = getInstance(id)
+  if (!instance?.iconFile) return null
+  const path = join(instanceDir(id), basename(instance.iconFile))
+  if (!existsSync(path)) return null
+  try {
+    const buf = readFileSync(path)
+    const mime = mimeForExt(extname(path))
+    return `data:${mime};base64,${buf.toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
+/** Copy a user-picked image into the instance folder and set iconFile. */
+export async function pickInstanceIcon(id: string): Promise<SpireInstance | null> {
+  const current = getInstance(id)
+  if (!current) throw new Error('Profile not found.')
+
+  const picked = await dialog.showOpenDialog({
+    title: 'Choose instance icon',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }
+    ]
+  })
+  if (picked.canceled || !picked.filePaths[0]) return null
+
+  const source = picked.filePaths[0]
+  const ext = extname(source).toLowerCase()
+  if (!CUSTOM_ICON_EXTS.has(ext)) {
+    throw new Error('Choose a PNG, JPG, WebP, or GIF image.')
+  }
+
+  ensureInstanceLayout(id)
+  removeCustomIconFiles(id)
+  const fileName = `${CUSTOM_ICON_BASENAME}${ext}`
+  copyFileSync(source, join(instanceDir(id), fileName))
+
+  return updateInstance(id, { iconFile: fileName })
+}
+
+/** Remove custom icon and fall back to the selected preset. */
+export function clearInstanceCustomIcon(id: string): SpireInstance {
+  return updateInstance(id, { iconFile: null })
 }
 
 /** Batch-assign group + order for home drag-and-drop. */

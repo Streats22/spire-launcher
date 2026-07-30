@@ -13,6 +13,8 @@ import CreateInstanceDialog from './CreateInstanceDialog'
 import CreditsDialog from './CreditsDialog'
 import HytaleAccountSwitcher from './HytaleAccountSwitcher'
 import InstanceBrowser from './InstanceBrowser'
+import InstanceIcon from './InstanceIcon'
+import { useInstanceCustomIcons } from './InstanceIconPicker'
 import SettingsView from './SettingsView'
 import VersionsView from './VersionsView'
 import spireLogo from './assets/spire-logo.png'
@@ -118,6 +120,7 @@ export default function App(): React.JSX.Element {
     () => instances.find((i) => i.id === settings?.activeInstanceId) ?? instances[0] ?? null,
     [instances, settings]
   )
+  const customIcons = useInstanceCustomIcons(instances)
 
   useEffect(() => {
     return window.spire.onNavigate((next) => {
@@ -301,6 +304,12 @@ export default function App(): React.JSX.Element {
         <div className="toolbar-spacer" />
         {active && view === 'home' ? (
           <span className="toolbar-chip" title={active.name}>
+            <InstanceIcon
+              instance={active}
+              customSrc={customIcons[active.id] ?? null}
+              className="toolbar-chip-icon"
+              draggable={false}
+            />
             <strong>{active.name}</strong>
           </span>
         ) : null}
@@ -312,7 +321,16 @@ export default function App(): React.JSX.Element {
             onManage={() => setView('versions')}
             compact
           />
-        ) : null}
+        ) : (
+          <button
+            className="btn account-switcher-sign-in"
+            type="button"
+            title="Sign in with your official Hytale account"
+            onClick={() => setView('versions')}
+          >
+            Sign in
+          </button>
+        )}
         <div className="toolbar-actions">
           <button
             className="toolbar-credits"
@@ -328,9 +346,9 @@ export default function App(): React.JSX.Element {
             className={`btn btn-ghost${view === 'versions' ? ' active' : ''}`}
             type="button"
             onClick={() => setView(view === 'versions' ? 'home' : 'versions')}
-            title="Install game client & accounts"
+            title="Hytale accounts, game client, and JRE"
           >
-            Install
+            Accounts
           </button>
           <button
             className={`btn btn-icon${view === 'settings' ? ' active' : ''}`}
@@ -513,8 +531,8 @@ export default function App(): React.JSX.Element {
           {installOk
             ? 'Ready'
             : hytaleAuth?.signedIn
-              ? 'Signed in — set install or download under Install'
-              : 'Set Hytale install or sign in under Install'}
+              ? 'Signed in — set install or download under Accounts'
+              : 'Set Hytale install or sign in under Accounts'}
         </span>
         <span>
           {active

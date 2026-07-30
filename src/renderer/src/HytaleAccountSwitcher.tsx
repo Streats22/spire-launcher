@@ -5,7 +5,7 @@ interface HytaleAccountSwitcherProps {
   auth: HytaleAuthStatus | null
   onAuth: (next: HytaleAuthStatus) => void
   onToast?: (message: string) => void
-  /** Opens Install / full account management. */
+  /** Opens full account management (Accounts & install). */
   onManage?: () => void
   /** Compact toolbar control (no field labels). */
   compact?: boolean
@@ -90,18 +90,6 @@ export default function HytaleAccountSwitcher({
             </select>
           </label>
         ) : null}
-
-        {onManage ? (
-          <button
-            className="btn btn-ghost account-switcher-manage"
-            type="button"
-            title="Manage accounts"
-            aria-label="Manage accounts"
-            onClick={onManage}
-          >
-            …
-          </button>
-        ) : null}
       </div>
     )
   }
@@ -145,8 +133,8 @@ export default function HytaleAccountSwitcher({
 
       {onManage ? (
         <div className="row" style={{ marginTop: 4 }}>
-          <button className="btn" type="button" onClick={onManage}>
-            Manage accounts…
+          <button className="btn btn-primary" type="button" onClick={onManage}>
+            Manage accounts
           </button>
         </div>
       ) : null}

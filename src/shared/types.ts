@@ -95,6 +95,13 @@ export interface SpireInstance {
   groupId?: string | null
   /** Order within the group (then name as tiebreaker). */
   sortIndex?: number
+  /** Built-in icon id from the preset list. Default Spire logo when unset. */
+  iconId?: string | null
+  /**
+   * Custom icon filename inside the instance folder (e.g. `icon.png`).
+   * When set, takes precedence over iconId for display.
+   */
+  iconFile?: string | null
 }
 
 export interface CreateInstanceOptions {
@@ -103,6 +110,7 @@ export interface CreateInstanceOptions {
   gameVersion?: string | null
   notes?: string
   groupId?: string | null
+  iconId?: string | null
 }
 
 export interface InstancePatch {
@@ -113,6 +121,9 @@ export interface InstancePatch {
   javaArgs?: string[]
   groupId?: string | null
   sortIndex?: number
+  iconId?: string | null
+  /** Set to null to clear a custom icon. */
+  iconFile?: string | null
 }
 
 export interface InstanceOrganizationItem {
@@ -285,6 +296,20 @@ export interface ModInstallResult {
   pageUrl?: string
   /** Spire is watching ~/Downloads to auto-import the finished file. */
   watchingDownloads?: boolean
+}
+
+/** Result of comparing an installed store mod to the latest published file. */
+export interface ModUpdateInfo {
+  source: ModSource
+  modId: string
+  name: string
+  kind: ContentKind
+  installedFileId: string
+  installedFileName: string
+  latestFileId: string
+  latestDisplayName: string | null
+  updateAvailable: boolean
+  error: string | null
 }
 
 export interface DownloadWatchStatus {
@@ -562,6 +587,9 @@ export interface SpireApi {
   listInstances: () => Promise<SpireInstance[]>
   createInstance: (options: CreateInstanceOptions | string) => Promise<SpireInstance>
   updateInstance: (id: string, patch: InstancePatch) => Promise<SpireInstance>
+  pickInstanceIcon: (id: string) => Promise<SpireInstance | null>
+  clearInstanceCustomIcon: (id: string) => Promise<SpireInstance>
+  getInstanceIconDataUrl: (id: string) => Promise<string | null>
   organizeInstances: (items: InstanceOrganizationItem[]) => Promise<SpireInstance[]>
   createInstanceGroup: (name: string) => Promise<SpireSettings>
   renameInstanceGroup: (id: string, name: string) => Promise<SpireSettings>
@@ -592,6 +620,18 @@ export interface SpireApi {
     modName?: string,
     kind?: ContentKind
   ) => Promise<ModInstallResult>
+  updateMod: (
+    instanceId: string,
+    source: ModSource,
+    modId: string,
+    fileId?: string,
+    mode?: ModInstallMode,
+    kind?: ContentKind
+  ) => Promise<ModInstallResult>
+  checkModUpdates: (
+    instanceId: string,
+    kind?: ContentKind
+  ) => Promise<ModUpdateInfo[]>
   installFromNxm: (instanceId: string, nxmUrl: string) => Promise<ModInstallResult>
   importLocalMod: (instanceId: string) => Promise<ModInstallResult | null>
   listInstalledMods: (instanceId: string) => Promise<InstalledMod[]>

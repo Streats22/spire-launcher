@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spire Launcher Roadmap — What’s Next for the Hytale Launcher</title>
+    <meta
+      name="description"
+      content="Spire Launcher product roadmap: shipping priorities for the open-source Hytale instance launcher — polish, trust, content, and what we won’t build."
+    />
+    <meta
+      name="keywords"
+      content="Spire launcher roadmap, Hytale launcher plans, Spire upcoming features"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://streats22.github.io/spire-launcher/docs/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Spire Launcher" />
+    <meta property="og:url" content="https://streats22.github.io/spire-launcher/docs/" />
+    <meta property="og:title" content="Spire Launcher Roadmap" />
+    <meta
+      property="og:description"
+      content="Where Spire is headed: trust &amp; installs, content workflow, and instance polish — without cloud lock-in."
+    />
+    <meta
+      property="og:image"
+      content="https://streats22.github.io/spire-launcher/assets/logo.png"
+    />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Spire Launcher Roadmap" />
+    <meta
+      name="twitter:description"
+      content="Shipping priorities for the open-source Hytale instance launcher."
+    />
+    <meta
+      name="twitter:image"
+      content="https://streats22.github.io/spire-launcher/assets/logo.png"
+    />
+
+    <meta name="theme-color" content="#10141a" />
+    <link rel="icon" href="../assets/icon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="../assets/icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Spire Launcher",
+            "item": "https://streats22.github.io/spire-launcher/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Docs / Roadmap",
+            "item": "https://streats22.github.io/spire-launcher/docs/"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <header class="top">
+      <a class="top-brand" href="../" aria-label="Spire Launcher home">
+        <img src="../assets/logo.png" alt="" width="28" height="28" />
+        Spire
+      </a>
+      <nav class="top-nav">
+        <a href="../features/">Features</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../faq/">FAQ</a>
+        <a href="../download/">Download</a>
+        <a
+          class="top-gh"
+          href="https://github.com/Streats22/spire-launcher"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+    </header>
+
+    <main class="page">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="../">Spire</a>
+        <span aria-hidden="true">/</span>
+        <span>Docs</span>
+      </nav>
+
+      <header class="page-head">
+        <p class="eyebrow">Documentation</p>
+        <h1>Roadmap</h1>
+        <p class="section-lede">
+          Spire stays a <strong>local-first Hytale instance launcher</strong> — Prism-style profiles,
+          content you control, no Spire account. This page is how we prioritize work. Dates are
+          soft; order is intentional.
+        </p>
+      </header>
+
+      <nav class="docs-toc" aria-label="In this docs page">
+        <a href="#principles">Principles</a>
+        <a href="#now">Now</a>
+        <a href="#next">Next</a>
+        <a href="#later">Later</a>
+        <a href="#exploring">Exploring</a>
+        <a href="#not-building">Not building</a>
+        <a href="#feedback">Feedback</a>
+      </nav>
+
+      <section class="band band-flush" id="principles" aria-labelledby="principles-heading">
+        <h2 id="principles-heading">Principles</h2>
+        <ul class="principle-list">
+          <li>
+            <strong>Local-first</strong>
+            <span>Profiles, keys, and tokens stay on your machine. Optional update checks stay anonymous and off-switchable.</span>
+          </li>
+          <li>
+            <strong>You own the game</strong>
+            <span>Spire never redistributes Hytale. Official auth and installs only.</span>
+          </li>
+          <li>
+            <strong>Instances are the product</strong>
+            <span>Isolation, packs, and per-profile content beat a single global mods folder.</span>
+          </li>
+          <li>
+            <strong>Ship trust before novelty</strong>
+            <span>Signing, updates, and clear account/install UX land before speculative extras.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="now" aria-labelledby="now-heading">
+        <div class="roadmap-lane-head">
+          <h2 id="now-heading">Now</h2>
+          <span class="roadmap-tag roadmap-tag-now">In progress / soon</span>
+        </div>
+        <p class="section-lede">
+          Finish the 0.2 line so installs feel trustworthy and daily mod workflows feel complete.
+        </p>
+        <ul class="roadmap-list">
+          <li>
+            <strong>Reliable in-app updates</strong>
+            <span>Every Release ships <code>latest.yml</code> / blockmaps so Setup builds can update without hunting GitHub.</span>
+          </li>
+          <li>
+            <strong>First-run clarity</strong>
+            <span>Obvious path: Accounts → client → create instance → mods. Fewer “where do I sign in?” dead ends.</span>
+          </li>
+          <li>
+            <strong>Mod update workflow</strong>
+            <span>See what’s outdated, update one or all, and show Installed / Update on browse + detail pages.</span>
+          </li>
+          <li>
+            <strong>Instance identity</strong>
+            <span>Preset + custom icons on home cards (and keep expanding the preset set).</span>
+          </li>
+          <li>
+            <strong>Release hygiene</strong>
+            <span>Keep <code>updates/latest.json</code>, release notes, and Pages docs aligned with what users actually download.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="next" aria-labelledby="next-heading">
+        <div class="roadmap-lane-head">
+          <h2 id="next-heading">Next</h2>
+          <span class="roadmap-tag roadmap-tag-next">Upcoming</span>
+        </div>
+        <p class="section-lede">After the current line feels solid for most players.</p>
+        <ul class="roadmap-list">
+          <li>
+            <strong>Code signing</strong>
+            <span>Windows SmartScreen and macOS Gatekeeper trust — fewer “damaged app” / protected-PC scares.</span>
+          </li>
+          <li>
+            <strong>Onboarding checklist</strong>
+            <span>Lightweight first-launch tips that disappear once Accounts + client + an instance exist.</span>
+          </li>
+          <li>
+            <strong>Content browser polish</strong>
+            <span>Faster search, clearer source status, better empty states when APIs or keys are missing.</span>
+          </li>
+          <li>
+            <strong>Packs UX</strong>
+            <span>Clearer export/import of <code>.spirepack</code>, including icons and “what’s inside” before you import.</span>
+          </li>
+          <li>
+            <strong>Linux / macOS install friction</strong>
+            <span>Docs + in-app copy for AppImage permissions, quarantine, and common install paths.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="later" aria-labelledby="later-heading">
+        <div class="roadmap-lane-head">
+          <h2 id="later-heading">Later</h2>
+          <span class="roadmap-tag roadmap-tag-later">On the horizon</span>
+        </div>
+        <ul class="roadmap-list">
+          <li>
+            <strong>Deeper dependency handling</strong>
+            <span>Smarter required-mod graphs across more stores, with conflict warnings when sources allow.</span>
+          </li>
+          <li>
+            <strong>Servers &amp; multiplayer helpers</strong>
+            <span>Richer server list tools and join flows without turning Spire into a social network.</span>
+          </li>
+          <li>
+            <strong>UI localization</strong>
+            <span>Ship Spire’s own interface in more languages (game translations already install as content).</span>
+          </li>
+          <li>
+            <strong>Modrinth when Hytale lands</strong>
+            <span>Plumbing is ready; turn it on when the catalog exists.</span>
+          </li>
+          <li>
+            <strong>Accessibility pass</strong>
+            <span>Keyboard, contrast, and screen-reader polish across main + Manage windows.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="exploring" aria-labelledby="exploring-heading">
+        <div class="roadmap-lane-head">
+          <h2 id="exploring-heading">Exploring</h2>
+          <span class="roadmap-tag roadmap-tag-explore">Maybe</span>
+        </div>
+        <p class="section-lede">Ideas under consideration — not commitments.</p>
+        <ul class="roadmap-list">
+          <li>
+            <strong>Shared pack discovery</strong>
+            <span>A curated index of community <code>.spirepack</code> links — still downloaded and kept local.</span>
+          </li>
+          <li>
+            <strong>Instance templates</strong>
+            <span>One-click “modded survival / creative / vanilla-ish” starters without locking you in.</span>
+          </li>
+          <li>
+            <strong>Performance tooling</strong>
+            <span>Simple launch diagnostics (Java args presets, log tips) for common crash patterns.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="not-building" aria-labelledby="not-heading">
+        <div class="roadmap-lane-head">
+          <h2 id="not-heading">Not building</h2>
+          <span class="roadmap-tag roadmap-tag-no">Out of scope</span>
+        </div>
+        <ul class="roadmap-list roadmap-list-no">
+          <li>
+            <strong>Spire accounts / cloud sync</strong>
+            <span>Conflicts with local-first. Backups stay packs + your own files.</span>
+          </li>
+          <li>
+            <strong>Redistributing Hytale</strong>
+            <span>No cracked clients, no bundling the game in the installer.</span>
+          </li>
+          <li>
+            <strong>Forced telemetry</strong>
+            <span>No analytics SDK. Update checks remain optional and anonymous.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band band-flush" id="feedback" aria-labelledby="feedback-heading">
+        <h2 id="feedback-heading">Feedback</h2>
+        <p class="section-lede">
+          Priorities shift with Hytale’s ecosystem and what people actually hit day to day. Open an
+          issue or discussion on GitHub — especially if something on <em>Now</em> is broken for you.
+        </p>
+        <div class="cta-row page-cta">
+          <a
+            class="btn btn-primary"
+            href="https://github.com/Streats22/spire-launcher/issues"
+            rel="noopener noreferrer"
+            >Open an issue</a
+          >
+          <a class="btn btn-ghost" href="../download/">Download Spire</a>
+          <a class="btn btn-ghost" href="../features/">Features</a>
+        </div>
+      </section>
+
+      <aside class="docs-more">
+        <h2>More docs</h2>
+        <ul class="site-links">
+          <li><a href="../features/">Features</a></li>
+          <li><a href="../faq/">FAQ</a></li>
+          <li><a href="../download/">Download</a></li>
+          <li><a href="../hytale-launcher/">Hytale launcher overview</a></li>
+          <li>
+            <a href="https://github.com/Streats22/spire-launcher#readme" rel="noopener noreferrer"
+              >Full README on GitHub</a
+            >
+          </li>
+        </ul>
+      </aside>
+    </main>
+
+    <footer class="foot">
+      <p>
+        <strong>Spire Launcher</strong>
+        ·
+        <a href="../">Home</a>
+        ·
+        <a href="./">Docs</a>
+        ·
+        <a href="../features/">Features</a>
+        ·
+        <a href="../faq/">FAQ</a>
+        ·
+        <a href="../download/">Download</a>
+      </p>
+      <p class="muted">Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.</p>
+    </footer>
+  </body>
+</html>

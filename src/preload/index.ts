@@ -43,6 +43,9 @@ const api: SpireApi = {
     ipcRenderer.invoke('spire:createInstance', options),
   updateInstance: (id, patch: InstancePatch) =>
     ipcRenderer.invoke('spire:updateInstance', id, patch),
+  pickInstanceIcon: (id) => ipcRenderer.invoke('spire:pickInstanceIcon', id),
+  clearInstanceCustomIcon: (id) => ipcRenderer.invoke('spire:clearInstanceCustomIcon', id),
+  getInstanceIconDataUrl: (id) => ipcRenderer.invoke('spire:getInstanceIconDataUrl', id),
   organizeInstances: (items) => ipcRenderer.invoke('spire:organizeInstances', items),
   createInstanceGroup: (name) => ipcRenderer.invoke('spire:createInstanceGroup', name),
   renameInstanceGroup: (id, name) => ipcRenderer.invoke('spire:renameInstanceGroup', id, name),
@@ -72,6 +75,10 @@ const api: SpireApi = {
       modName,
       kind
     ),
+  updateMod: (instanceId, source, modId, fileId, mode, kind) =>
+    ipcRenderer.invoke('spire:updateMod', instanceId, source, modId, fileId, mode, kind),
+  checkModUpdates: (instanceId, kind) =>
+    ipcRenderer.invoke('spire:checkModUpdates', instanceId, kind),
   installFromNxm: (instanceId, nxmUrl) =>
     ipcRenderer.invoke('spire:installFromNxm', instanceId, nxmUrl),
   importLocalMod: (instanceId) => ipcRenderer.invoke('spire:importLocalMod', instanceId),

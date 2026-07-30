@@ -6,7 +6,7 @@ It follows a Prism Launcher–style model for Hytale: isolated profiles, separat
 
 > Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.
 
-**Links:** [Website](https://streats22.github.io/spire-launcher/) · [Download](https://streats22.github.io/spire-launcher/download/) · [FAQ](https://streats22.github.io/spire-launcher/faq/) · [Releases](https://github.com/Streats22/spire-launcher/releases) · [Credits](#credits)
+**Links:** [Website](https://streats22.github.io/spire-launcher/) · [Download](https://streats22.github.io/spire-launcher/download/) · [Docs / Roadmap](https://streats22.github.io/spire-launcher/docs/) · [FAQ](https://streats22.github.io/spire-launcher/faq/) · [Releases](https://github.com/Streats22/spire-launcher/releases) · [Credits](#credits)
 
 ---
 
@@ -26,6 +26,7 @@ It follows a Prism Launcher–style model for Hytale: isolated profiles, separat
 - [Develop](#develop)
 - [Package / release builds](#package--release-builds)
 - [Updates](#updates)
+- [Roadmap](#roadmap)
 - [Credits](#credits)
 - [License & disclaimer](#license--disclaimer)
 
@@ -127,6 +128,7 @@ Static pages in [`docs/`](docs/) are published on **GitHub Pages**:
 | --- | --- |
 | Home | [/](https://streats22.github.io/spire-launcher/) |
 | Download | [/download/](https://streats22.github.io/spire-launcher/download/) |
+| Docs / Roadmap | [/docs/](https://streats22.github.io/spire-launcher/docs/) |
 | Features | [/features/](https://streats22.github.io/spire-launcher/features/) |
 | FAQ | [/faq/](https://streats22.github.io/spire-launcher/faq/) |
 | Hytale launcher | [/hytale-launcher/](https://streats22.github.io/spire-launcher/hytale-launcher/) |
@@ -340,6 +342,23 @@ Spire can check for a newer release in two ways:
 1. Bump `"version"` in `package.json`.
 2. Update [`updates/latest.json`](updates/latest.json) on the default branch.
 3. Tag / run the Release workflow so installers and updater files are attached to the GitHub release.
+
+---
+
+## Roadmap
+
+Product direction lives on the site so it’s easy to browse and update without digging through commits:
+
+**https://streats22.github.io/spire-launcher/docs/**
+
+| Lane | Focus |
+| --- | --- |
+| **Now** | Reliable in-app updates, first-run / Accounts clarity, mod update workflow, instance icons, release hygiene |
+| **Next** | Code signing, onboarding checklist, content browser polish, packs UX, Linux/macOS install friction |
+| **Later** | Deeper dependencies, server helpers, UI localization, Modrinth when Hytale lands, accessibility |
+| **Not building** | Spire accounts / cloud sync, redistributing Hytale, forced telemetry |
+
+Priorities shift with feedback — open an [issue](https://github.com/Streats22/spire-launcher/issues) if something on *Now* is broken for you.
 
 ---
 

@@ -26,7 +26,10 @@ import {
   organizeInstances,
   renameInstanceGroup,
   reorderInstanceGroups,
-  updateInstance
+  updateInstance,
+  clearInstanceCustomIcon,
+  getInstanceIconDataUrl,
+  pickInstanceIcon
 } from './instances'
 import { getInstallStatus, launchInstance } from './launch'
 import { exportInstancePack, importInstancePack } from './pack'
@@ -42,6 +45,7 @@ import {
   removeInstalledMod,
   searchMods
 } from './mods/service'
+import { checkModUpdates, updateInstalledMod } from './mods/modUpdates'
 import { setModEnabled } from './mods/manifest'
 import {
   getDownloadWatchStatus,
@@ -241,6 +245,13 @@ function registerIpc(): void {
   ipcMain.handle('spire:updateInstance', (_e, id: string, patch: InstancePatch) =>
     updateInstance(id, patch)
   )
+  ipcMain.handle('spire:pickInstanceIcon', (_e, id: string) => pickInstanceIcon(id))
+  ipcMain.handle('spire:clearInstanceCustomIcon', (_e, id: string) =>
+    clearInstanceCustomIcon(id)
+  )
+  ipcMain.handle('spire:getInstanceIconDataUrl', (_e, id: string) =>
+    getInstanceIconDataUrl(id)
+  )
   ipcMain.handle('spire:organizeInstances', (_e, items: InstanceOrganizationItem[]) =>
     organizeInstances(items)
   )
@@ -311,6 +322,36 @@ function registerIpc(): void {
       }
       return result
     }
+  )
+  ipcMain.handle(
+    'spire:updateMod',
+    async (
+      _e,
+      instanceId: string,
+      source: ModSource,
+      modId: string,
+      fileId?: string,
+      mode?: 'slow' | 'quick',
+      kind?: import('../shared/types').ContentKind
+    ) => {
+      const result = await updateInstalledMod(
+        instanceId,
+        source,
+        modId,
+        fileId,
+        mode ?? 'quick',
+        kind ?? 'mods'
+      )
+      if ((result.needsManualDownload || result.needsManualNxm) && result.pageUrl) {
+        await shell.openExternal(result.pageUrl)
+      }
+      return result
+    }
+  )
+  ipcMain.handle(
+    'spire:checkModUpdates',
+    (_e, instanceId: string, kind?: import('../shared/types').ContentKind) =>
+      checkModUpdates(instanceId, kind)
   )
   ipcMain.handle('spire:installFromNxm', (_e, instanceId: string, nxmUrl: string) =>
     installFromNxmLink(instanceId, nxmUrl)

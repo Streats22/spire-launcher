@@ -9,7 +9,8 @@ import type {
   ModInstallMode,
   ModListing,
   ModSort,
-  ModSource
+  ModSource,
+  ModUpdateInfo
 } from '../../shared/types'
 import ContextMenu, { useContextMenu } from './ContextMenu'
 import DownloadProgressPanel from './DownloadProgressPanel'
@@ -106,6 +107,8 @@ export default function ModsBrowser({
   const [hasMore, setHasMore] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [installed, setInstalled] = useState<InstalledMod[]>([])
+  const [updateByKey, setUpdateByKey] = useState<Record<string, ModUpdateInfo>>({})
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [installingId, setInstallingId] = useState<string | null>(null)
@@ -161,9 +164,29 @@ export default function ModsBrowser({
     setInstalled(all.filter((m) => (m.kind ?? 'mods') === contentKind))
   }, [instanceId, contentKind])
 
+  const refreshUpdates = useCallback(async () => {
+    setCheckingUpdates(true)
+    try {
+      const updates = await window.spire.checkModUpdates(instanceId, contentKind)
+      const next: Record<string, ModUpdateInfo> = {}
+      for (const info of updates) {
+        next[`${info.source}:${info.modId}`] = info
+      }
+      setUpdateByKey(next)
+    } catch {
+      setUpdateByKey({})
+    } finally {
+      setCheckingUpdates(false)
+    }
+  }, [instanceId, contentKind])
+
   useEffect(() => {
     void refreshInstalled()
   }, [refreshInstalled])
+
+  useEffect(() => {
+    void refreshUpdates()
+  }, [refreshUpdates])
 
   useEffect(() => {
     let cancelled = false
@@ -188,13 +211,16 @@ export default function ModsBrowser({
     const offStatus = window.spire.onDownloadWatchStatus(setWatchStatus)
     const offImport = window.spire.onModAutoImported((result) => {
       onToast(result.message)
-      if (result.ok) void refreshInstalled()
+      if (result.ok) {
+        void refreshInstalled()
+        void refreshUpdates()
+      }
     })
     return () => {
       offStatus()
       offImport()
     }
-  }, [onToast, refreshInstalled])
+  }, [onToast, refreshInstalled, refreshUpdates])
 
   const mergeUnique = useCallback((prev: ModListing[], next: ModListing[]): ModListing[] => {
     const seen = new Set(prev.map((m) => `${m.source}:${m.id}`))
@@ -378,14 +404,60 @@ export default function ModsBrowser({
     const key = `${mode}:${mod.source}:${mod.id}:${fileId || ''}`
     setInstallingId(key)
     try {
-      const result = await window.spire.installMod(
+      const already = installed.some(
+        (m) => m.source === mod.source && String(m.modId) === String(mod.id)
+      )
+      const result = already
+        ? await window.spire.updateMod(
+            instanceId,
+            mod.source,
+            mod.id,
+            fileId || undefined,
+            mode,
+            contentKind
+          )
+        : await window.spire.installMod(
+            instanceId,
+            mod.source,
+            mod.id,
+            fileId || undefined,
+            mode,
+            mod.name,
+            contentKind
+          )
+      onToast(result.message)
+      if (result.needsManualDownload || result.needsManualNxm) {
+        if (mod.source === 'nexus') setSource('nexus')
+      }
+      if (result.watchingDownloads) {
+        setWatchStatus(await window.spire.getDownloadWatchStatus())
+      }
+      if (result.ok) {
+        await refreshInstalled()
+        await refreshUpdates()
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInstallingId(null)
+    }
+  }
+
+  async function onUpdateMod(mod: InstalledMod, fileId?: string): Promise<void> {
+    if (String(mod.modId) === 'local') {
+      onToast('Local imports cannot be updated from a store.')
+      return
+    }
+    const key = `update:${mod.source}:${mod.modId}:${fileId || 'latest'}`
+    setInstallingId(key)
+    try {
+      const result = await window.spire.updateMod(
         instanceId,
         mod.source,
-        mod.id,
-        fileId || undefined,
-        mode,
-        mod.name,
-        contentKind
+        mod.modId,
+        fileId,
+        'quick',
+        mod.kind ?? contentKind
       )
       onToast(result.message)
       if (result.needsManualDownload || result.needsManualNxm) {
@@ -394,7 +466,49 @@ export default function ModsBrowser({
       if (result.watchingDownloads) {
         setWatchStatus(await window.spire.getDownloadWatchStatus())
       }
-      if (result.ok) await refreshInstalled()
+      if (result.ok) {
+        await refreshInstalled()
+        await refreshUpdates()
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInstallingId(null)
+    }
+  }
+
+  async function onUpdateAll(): Promise<void> {
+    const outdated = installed.filter((m) => {
+      if (String(m.modId) === 'local') return false
+      return updateByKey[`${m.source}:${m.modId}`]?.updateAvailable
+    })
+    if (outdated.length === 0) {
+      onToast('All store mods are up to date.')
+      return
+    }
+    setInstallingId('update-all')
+    let okCount = 0
+    try {
+      for (const mod of outdated) {
+        const info = updateByKey[`${mod.source}:${mod.modId}`]
+        const result = await window.spire.updateMod(
+          instanceId,
+          mod.source,
+          mod.modId,
+          info?.latestFileId,
+          'quick',
+          mod.kind ?? contentKind
+        )
+        if (result.ok) okCount += 1
+        else onToast(result.message)
+      }
+      onToast(
+        okCount === outdated.length
+          ? `Updated ${okCount} ${kindLabel(contentKind).toLowerCase()}.`
+          : `Updated ${okCount} of ${outdated.length}.`
+      )
+      await refreshInstalled()
+      await refreshUpdates()
     } catch (err) {
       onToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -405,6 +519,7 @@ export default function ModsBrowser({
   async function onRemove(mod: InstalledMod): Promise<void> {
     await window.spire.removeInstalledMod(instanceId, mod.source, mod.modId)
     await refreshInstalled()
+    await refreshUpdates()
     onToast(`Removed “${mod.name}”`)
   }
 
@@ -419,11 +534,38 @@ export default function ModsBrowser({
     const result = await window.spire.importLocalMod(instanceId)
     if (!result) return
     onToast(result.message)
-    if (result.ok) await refreshInstalled()
+    if (result.ok) {
+      await refreshInstalled()
+      await refreshUpdates()
+    }
   }
 
   const installedKeys = new Set(installed.map((m) => `${m.source}:${m.modId}`))
+  const outdatedCount = installed.filter(
+    (m) => updateByKey[`${m.source}:${m.modId}`]?.updateAvailable
+  ).length
   const listing = details?.listing ?? selected
+  const installedForListing = listing
+    ? installed.find(
+        (m) => m.source === listing.source && String(m.modId) === String(listing.id)
+      )
+    : undefined
+  const updateForListing = listing
+    ? updateByKey[`${listing.source}:${listing.id}`]
+    : undefined
+  const latestFromDetails =
+    details?.versions?.find((v) => v.primary) ?? details?.versions?.[0] ?? null
+  const listingUpdateAvailable = Boolean(
+    installedForListing &&
+      (updateForListing?.updateAvailable ||
+        (latestFromDetails &&
+          String(latestFromDetails.fileId) !== String(installedForListing.fileId)))
+  )
+  const selectedMatchesInstalled = Boolean(
+    installedForListing &&
+      selectedFileId &&
+      String(selectedFileId) === String(installedForListing.fileId)
+  )
   const isCurseForge = source === 'curseforge'
   const isNexus = source === 'nexus'
   const isDirectInstall =
@@ -444,13 +586,39 @@ export default function ModsBrowser({
             <p className="page-sub">
               {installed.length === 0
                 ? `No ${kindLabel(contentKind).toLowerCase()} on ${instanceName} yet.`
-                : `${enabledCount} active · ${installed.length} installed on ${instanceName}`}
+                : `${enabledCount} active · ${installed.length} installed on ${instanceName}${
+                    outdatedCount > 0 ? ` · ${outdatedCount} update${outdatedCount === 1 ? '' : 's'} available` : ''
+                  }`}
             </p>
             <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
               {kindInstallHint(contentKind)}
             </p>
           </div>
           <div className="mods-manage-actions">
+            {installed.length > 0 ? (
+              <>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={checkingUpdates || installingId === 'update-all'}
+                  onClick={() => void refreshUpdates()}
+                >
+                  {checkingUpdates ? 'Checking…' : 'Check updates'}
+                </button>
+                {outdatedCount > 0 ? (
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={Boolean(installingId)}
+                    onClick={() => void onUpdateAll()}
+                  >
+                    {installingId === 'update-all'
+                      ? 'Updating…'
+                      : `Update all (${outdatedCount})`}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
             {contentKind === 'mods' ? (
               <button className="btn" type="button" onClick={() => void onImportFile()}>
                 Import file
@@ -493,10 +661,17 @@ export default function ModsBrowser({
             </p>
             {installed.map((mod) => {
               const on = mod.enabled !== false
+              const updateKey = `${mod.source}:${mod.modId}`
+              const updateInfo = updateByKey[updateKey]
+              const canUpdate = Boolean(updateInfo?.updateAvailable)
+              const updating =
+                installingId === `update:${mod.source}:${mod.modId}:latest` ||
+                installingId === `update:${mod.source}:${mod.modId}:${updateInfo?.latestFileId || ''}` ||
+                installingId === 'update-all'
               return (
                 <div
                   key={`${mod.source}:${mod.modId}:${mod.fileName}`}
-                  className={`manage-row${!on ? ' is-disabled' : ''}`}
+                  className={`manage-row${!on ? ' is-disabled' : ''}${canUpdate ? ' has-update' : ''}`}
                   onContextMenu={(e) =>
                     openMenu(e, [
                       {
@@ -504,6 +679,15 @@ export default function ModsBrowser({
                         label: on ? 'Disable' : 'Enable',
                         onSelect: () => void onToggleEnabled(mod)
                       },
+                      ...(canUpdate
+                        ? [
+                            {
+                              id: 'update',
+                              label: 'Update',
+                              onSelect: () => void onUpdateMod(mod, updateInfo?.latestFileId)
+                            }
+                          ]
+                        : []),
                       { id: 'sep', label: '', separator: true },
                       {
                         id: 'remove',
@@ -515,10 +699,20 @@ export default function ModsBrowser({
                   }
                 >
                   <div className="manage-row-main">
-                    <strong>{mod.name}</strong>
+                    <strong>
+                      {mod.name}
+                      {canUpdate ? (
+                        <span className="mod-badge mod-badge-update">Update</span>
+                      ) : String(mod.modId) !== 'local' && updateInfo && !updateInfo.error ? (
+                        <span className="mod-badge mod-badge-ok">Latest</span>
+                      ) : null}
+                    </strong>
                     <span className="muted">
                       {mod.source} · {mod.fileName}
                       {!on ? ' · disabled' : ''}
+                      {canUpdate && updateInfo?.latestDisplayName
+                        ? ` · newer: ${updateInfo.latestDisplayName}`
+                        : ''}
                     </span>
                   </div>
                   <div className="manage-row-actions">
@@ -533,6 +727,16 @@ export default function ModsBrowser({
                         />
                         Active
                       </label>
+                    ) : null}
+                    {canUpdate ? (
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={updating || Boolean(installingId)}
+                        onClick={() => void onUpdateMod(mod, updateInfo?.latestFileId)}
+                      >
+                        {updating ? 'Updating…' : 'Update'}
+                      </button>
                     ) : null}
                     <button
                       className="btn btn-danger"
@@ -741,11 +945,12 @@ export default function ModsBrowser({
             results.map((mod) => {
               const key = `${mod.source}:${mod.id}`
               const isInstalled = installedKeys.has(key)
+              const hasUpdate = Boolean(updateByKey[key]?.updateAvailable)
               const isActive = selected?.id === mod.id && selected.source === mod.source
               return (
                 <article
                   key={key}
-                  className={`mod-row${isActive ? ' active' : ''}`}
+                  className={`mod-row${isActive ? ' active' : ''}${isInstalled ? ' is-installed' : ''}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => setSelected(mod)}
@@ -776,11 +981,20 @@ export default function ModsBrowser({
                     <div className="mod-logo placeholder" />
                   )}
                   <div className="mod-body">
-                    <h3>{mod.name}</h3>
+                    <h3>
+                      {mod.name}
+                      {isInstalled ? (
+                        <span
+                          className={`mod-badge ${hasUpdate ? 'mod-badge-update' : 'mod-badge-installed'}`}
+                        >
+                          {hasUpdate ? 'Update' : 'Installed'}
+                        </span>
+                      ) : null}
+                    </h3>
                     <p className="mod-summary">{mod.summary || 'No summary.'}</p>
                     <span className="mod-meta">
                       {mod.author} · {formatDownloads(mod.downloads)}
-                      {isInstalled ? ' · Installed' : ''}
+                      {isInstalled ? (hasUpdate ? ' · Update available' : ' · Installed') : ''}
                     </span>
                   </div>
                 </article>
@@ -848,12 +1062,26 @@ export default function ModsBrowser({
                 <div className="mod-detail-logo placeholder" />
               )}
               <div>
-                <h2>{listing.name}</h2>
+                <h2>
+                  {listing.name}
+                  {installedForListing ? (
+                    <span
+                      className={`mod-badge ${
+                        listingUpdateAvailable ? 'mod-badge-update' : 'mod-badge-installed'
+                      }`}
+                    >
+                      {listingUpdateAvailable ? 'Update available' : 'Installed'}
+                    </span>
+                  ) : null}
+                </h2>
                 <p className="mod-meta">
                   {listing.author}
                   {listing.downloads ? ` · ${formatDownloads(listing.downloads)} downloads` : ''}
                   {listing.updatedAt
                     ? ` · Updated ${new Date(listing.updatedAt).toLocaleDateString()}`
+                    : ''}
+                  {installedForListing
+                    ? ` · Your file: ${installedForListing.fileName}`
                     : ''}
                 </p>
               </div>
@@ -877,7 +1105,11 @@ export default function ModsBrowser({
                       {details.versions.map((v) => {
                         const meta = [
                           v.releaseType,
-                          v.fileDate ? new Date(v.fileDate).toLocaleDateString() : null
+                          v.fileDate ? new Date(v.fileDate).toLocaleDateString() : null,
+                          installedForListing &&
+                          String(installedForListing.fileId) === String(v.fileId)
+                            ? 'installed'
+                            : null
                         ]
                           .filter(Boolean)
                           .join(' · ')
@@ -904,24 +1136,75 @@ export default function ModsBrowser({
                     <button
                       className="btn btn-primary"
                       type="button"
-                      disabled={Boolean(
-                        installingId?.startsWith('quick:') || installingId?.startsWith('slow:')
-                      )}
-                      onClick={() => void onDownload(listing, 'quick', selectedFileId)}
+                      disabled={
+                        Boolean(
+                          installingId?.startsWith('quick:') ||
+                            installingId?.startsWith('slow:') ||
+                            installingId?.startsWith('update:')
+                        ) ||
+                        (Boolean(installedForListing) &&
+                          selectedMatchesInstalled &&
+                          !listingUpdateAvailable)
+                      }
+                      onClick={() => {
+                        const targetFileId =
+                          installedForListing &&
+                          selectedMatchesInstalled &&
+                          listingUpdateAvailable
+                            ? updateForListing?.latestFileId ||
+                              latestFromDetails?.fileId ||
+                              selectedFileId
+                            : selectedFileId
+                        void onDownload(listing, 'quick', targetFileId)
+                      }}
                     >
-                      {installingId?.startsWith('quick:') || installingId?.startsWith('slow:')
+                      {installingId?.startsWith('quick:') ||
+                      installingId?.startsWith('slow:') ||
+                      installingId?.startsWith('update:')
                         ? 'Installing…'
-                        : 'Install'}
+                        : installedForListing
+                          ? selectedMatchesInstalled && !listingUpdateAvailable
+                            ? 'Installed'
+                            : selectedMatchesInstalled || listingUpdateAvailable
+                              ? 'Update'
+                              : 'Install this version'
+                          : 'Install'}
                     </button>
                   ) : (
                     <>
                       <button
                         className="btn btn-primary"
                         type="button"
-                        disabled={installingId?.startsWith('slow:')}
-                        onClick={() => void onDownload(listing, 'slow', selectedFileId)}
+                        disabled={
+                          Boolean(
+                            installingId?.startsWith('slow:') ||
+                              installingId?.startsWith('update:')
+                          ) ||
+                          (Boolean(installedForListing) &&
+                            selectedMatchesInstalled &&
+                            !listingUpdateAvailable)
+                        }
+                        onClick={() => {
+                          const targetFileId =
+                            installedForListing &&
+                            selectedMatchesInstalled &&
+                            listingUpdateAvailable
+                              ? updateForListing?.latestFileId ||
+                                latestFromDetails?.fileId ||
+                                selectedFileId
+                              : selectedFileId
+                          void onDownload(listing, 'slow', targetFileId)
+                        }}
                       >
-                        {installingId?.startsWith('slow:') ? '…' : 'Download'}
+                        {installingId?.startsWith('slow:') || installingId?.startsWith('update:')
+                          ? '…'
+                          : installedForListing
+                            ? selectedMatchesInstalled && !listingUpdateAvailable
+                              ? 'Installed'
+                              : selectedMatchesInstalled || listingUpdateAvailable
+                                ? 'Update'
+                                : 'Install this version'
+                            : 'Download'}
                       </button>
                       <button
                         className="btn"
@@ -931,10 +1214,33 @@ export default function ModsBrowser({
                             ? 'Premium CDN one-click when your Nexus API key allows it'
                             : 'Needs optional Nexus Premium API key'
                         }
-                        disabled={!quickAvailable || Boolean(installingId?.startsWith('quick:'))}
-                        onClick={() => void onDownload(listing, 'quick', selectedFileId)}
+                        disabled={
+                          !quickAvailable ||
+                          Boolean(
+                            installingId?.startsWith('quick:') ||
+                              installingId?.startsWith('update:')
+                          ) ||
+                          (Boolean(installedForListing) &&
+                            selectedMatchesInstalled &&
+                            !listingUpdateAvailable)
+                        }
+                        onClick={() => {
+                          const targetFileId =
+                            installedForListing &&
+                            selectedMatchesInstalled &&
+                            listingUpdateAvailable
+                              ? updateForListing?.latestFileId ||
+                                latestFromDetails?.fileId ||
+                                selectedFileId
+                              : selectedFileId
+                          void onDownload(listing, 'quick', targetFileId)
+                        }}
                       >
-                        {installingId?.startsWith('quick:') ? '…' : 'Download quickly'}
+                        {installingId?.startsWith('quick:') || installingId?.startsWith('update:')
+                          ? '…'
+                          : installedForListing
+                            ? 'Update quickly'
+                            : 'Download quickly'}
                       </button>
                     </>
                   )}

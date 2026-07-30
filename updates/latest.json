@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "url": "https://github.com/Streats22/spire-launcher/releases/latest",
-  "notes": "First public Spire release — instance launcher for Hytale with mods, worlds, isolation, and .spirepack sharing."
+  "notes": "Themes & custom colors, clearer Accounts, mod update checks, instance icons, and a public roadmap."
 }

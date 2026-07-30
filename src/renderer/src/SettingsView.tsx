@@ -30,7 +30,7 @@ type SettingsSection = 'general' | 'game' | 'launch' | 'appearance' | 'mods' | '
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; hint: string }> = [
   { id: 'general', label: 'General', hint: 'Updates & version' },
-  { id: 'game', label: 'Game', hint: 'Install & accounts' },
+  { id: 'game', label: 'Accounts', hint: 'Sign-in & install' },
   { id: 'launch', label: 'Launch', hint: 'Play behavior' },
   { id: 'appearance', label: 'Appearance', hint: 'Theme & layout' },
   { id: 'mods', label: 'Mods & keys', hint: 'Stores & gallery' },
@@ -190,8 +190,8 @@ export default function SettingsView({
           : ''
       }`
     : (hytaleAuth?.accounts?.length ?? 0) > 0
-      ? `${hytaleAuth!.accounts.length} saved — pick one under Install`
-      : 'Not signed in'
+      ? `${hytaleAuth!.accounts.length} saved — switch above or open Manage accounts`
+      : 'Not signed in — open Manage accounts to add one'
 
   function updateStatusLabel(): string {
     if (updateChecking) return 'Checking for updates…'
@@ -373,37 +373,11 @@ export default function SettingsView({
 
           {section === 'game' ? (
             <section className="panel settings-panel">
-              <h2>Game</h2>
+              <h2>Accounts</h2>
               <p className="settings-lead muted">
-                Official install path used as a fallback when Spire’s own client download isn’t set
-                for an instance.
+                Sign in with your official Hytale account, switch profiles, and check the game
+                install Spire can fall back to.
               </p>
-
-              <SettingsCard
-                title="Hytale install folder"
-                stacked
-                actions={
-                  <div className="row">
-                    <button className="btn" type="button" onClick={() => void onDetectInstall()}>
-                      Detect
-                    </button>
-                    <button className="btn" type="button" onClick={() => void onPickInstall()}>
-                      Browse…
-                    </button>
-                  </div>
-                }
-              >
-                <code className="settings-path" title={settings.gameInstallPath ?? undefined}>
-                  {settings.gameInstallPath ?? 'Not set'}
-                </code>
-                <span className={status?.valid ? 'ok-text' : 'warn-text'}>
-                  {status?.issues?.length
-                    ? status.issues.join(' ')
-                    : status?.valid
-                      ? 'Install looks valid'
-                      : 'Not configured'}
-                </span>
-              </SettingsCard>
 
               <SettingsCard
                 title="Hytale accounts"
@@ -411,7 +385,7 @@ export default function SettingsView({
                 actions={
                   <div className="row">
                     <button className="btn btn-primary" type="button" onClick={onOpenInstall}>
-                      Open Install
+                      Manage accounts
                     </button>
                     {(hytaleAuth?.accounts?.length ?? 0) > 0 ? (
                       <button
@@ -441,7 +415,37 @@ export default function SettingsView({
                     onToast={onToast}
                     onManage={onOpenInstall}
                   />
-                ) : null}
+                ) : (
+                  <p className="muted" style={{ margin: 0 }}>
+                    Use <strong>Manage accounts</strong> to sign in. Tokens stay on this machine.
+                  </p>
+                )}
+              </SettingsCard>
+
+              <SettingsCard
+                title="Hytale install folder"
+                stacked
+                actions={
+                  <div className="row">
+                    <button className="btn" type="button" onClick={() => void onDetectInstall()}>
+                      Detect
+                    </button>
+                    <button className="btn" type="button" onClick={() => void onPickInstall()}>
+                      Browse…
+                    </button>
+                  </div>
+                }
+              >
+                <code className="settings-path" title={settings.gameInstallPath ?? undefined}>
+                  {settings.gameInstallPath ?? 'Not set'}
+                </code>
+                <span className={status?.valid ? 'ok-text' : 'warn-text'}>
+                  {status?.issues?.length
+                    ? status.issues.join(' ')
+                    : status?.valid
+                      ? 'Install looks valid'
+                      : 'Not configured'}
+                </span>
               </SettingsCard>
             </section>
           ) : null}

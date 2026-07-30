@@ -6,7 +6,13 @@ import type {
   HytaleDownloadProgress,
   InstanceChannel
 } from '../../shared/types'
+import {
+  DEFAULT_INSTANCE_ICON_ID,
+  INSTANCE_ICON_PRESETS,
+  normalizeInstanceIconId
+} from '../../shared/instanceIcons'
 import DownloadProgressPanel from './DownloadProgressPanel'
+import InstanceIcon from './InstanceIcon'
 
 interface CreateInstanceDialogProps {
   open: boolean
@@ -42,6 +48,7 @@ export default function CreateInstanceDialog({
   const [downloadAfter, setDownloadAfter] = useState(false)
   const [localBusy, setLocalBusy] = useState(false)
   const [progress, setProgress] = useState<HytaleDownloadProgress | null>(null)
+  const [iconId, setIconId] = useState(DEFAULT_INSTANCE_ICON_ID)
 
   const signedIn = Boolean(auth?.signedIn && auth.sessionValid)
 
@@ -75,6 +82,7 @@ export default function CreateInstanceDialog({
     setVersionsError(null)
     setDownloadAfter(false)
     setProgress(null)
+    setIconId(DEFAULT_INSTANCE_ICON_ID)
     void refreshVersions('release')
   }, [open, refreshVersions])
 
@@ -111,7 +119,8 @@ export default function CreateInstanceDialog({
         name: name.trim() || 'New Instance',
         channel,
         gameVersion: gameVersion.trim() || null,
-        notes: notes.trim()
+        notes: notes.trim(),
+        iconId: normalizeInstanceIconId(iconId)
       }
       const created = await window.spire.createInstance(options)
 
@@ -199,6 +208,32 @@ export default function CreateInstanceDialog({
                 <option value="pre-release">Pre-release</option>
               </select>
             </label>
+            <div className="field">
+              <span>Icon</span>
+              <div className="instance-icon-grid instance-icon-grid-compact" role="listbox" aria-label="Instance icon">
+                {INSTANCE_ICON_PRESETS.map((preset) => {
+                  const active = iconId === preset.id
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`instance-icon-option${active ? ' is-active' : ''}`}
+                      disabled={creating}
+                      title={preset.label}
+                      onClick={() => setIconId(preset.id)}
+                    >
+                      <InstanceIcon iconId={preset.id} className="instance-icon-option-img" />
+                      <span>{preset.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                You can set a custom image later in Manage → Profile.
+              </p>
+            </div>
             <label className="field">
               <span>Notes (optional)</span>
               <textarea
@@ -230,7 +265,7 @@ export default function CreateInstanceDialog({
                 <p>
                   Sign in with your official Hytale account (browser launcher login) to list the
                   current <code>{channel}</code> build and install the full Client + JRE. You can
-                  still create this profile and download later under Install.
+                  still create this profile and download later under Accounts.
                 </p>
                 <div className="row">
                   <button
@@ -250,7 +285,7 @@ export default function CreateInstanceDialog({
                       onOpenInstall()
                     }}
                   >
-                    Open Install
+                    Open Accounts
                   </button>
                 </div>
               </div>
@@ -258,7 +293,7 @@ export default function CreateInstanceDialog({
               <div className="wizard-callout">
                 <p>
                   This saved login is downloader-only and cannot install the playable Client + JRE.
-                  Open Install, remove the account, and sign in again.
+                  Open Accounts, remove the account, and sign in again.
                 </p>
                 <div className="row">
                   <button
@@ -270,7 +305,7 @@ export default function CreateInstanceDialog({
                       onOpenInstall()
                     }}
                   >
-                    Open Install
+                    Open Accounts
                   </button>
                 </div>
               </div>

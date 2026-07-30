@@ -8,6 +8,7 @@ import type {
   SpireInstance
 } from '../../shared/types'
 import DownloadProgressPanel from './DownloadProgressPanel'
+import InstanceIconPicker from './InstanceIconPicker'
 
 interface ProfilesViewProps {
   instances: SpireInstance[]
@@ -43,6 +44,7 @@ export default function ProfilesView({
   const [busy, setBusy] = useState(false)
   const [runtime, setRuntime] = useState<InstanceRuntimeStatus | null>(null)
   const [progress, setProgress] = useState<HytaleDownloadProgress | null>(null)
+  const [customIconSrc, setCustomIconSrc] = useState<string | null>(null)
 
   useEffect(() => {
     setName(active?.name ?? '')
@@ -50,6 +52,18 @@ export default function ProfilesView({
     setChannel(active?.channel ?? 'release')
     setGameVersion(active?.gameVersion ?? '')
   }, [active?.id, active?.name, active?.notes, active?.channel, active?.gameVersion])
+
+  useEffect(() => {
+    let cancelled = false
+    setCustomIconSrc(null)
+    if (!active?.iconFile) return
+    void window.spire.getInstanceIconDataUrl(active.id).then((src) => {
+      if (!cancelled) setCustomIconSrc(src)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [active?.id, active?.iconFile, active?.updatedAt])
 
   const refreshRuntime = useCallback(async () => {
     if (!active) {
@@ -146,7 +160,7 @@ export default function ProfilesView({
   async function installClient(repair = false): Promise<void> {
     if (!active) return
     if (!auth?.signedIn || !auth.sessionValid) {
-      onToast('Sign in under Install first.')
+      onToast('Sign in under Accounts first.')
       onOpenInstall?.()
       return
     }
@@ -259,11 +273,11 @@ export default function ProfilesView({
         </div>
         {!signedIn ? (
           <p className="muted" style={{ marginBottom: 0 }}>
-            Sign in under Install to download the official client + patches.
+            Sign in under Accounts to download the official client + patches.
           </p>
         ) : auth?.canInstallClient === false ? (
           <p className="muted" style={{ marginBottom: 0 }}>
-            This saved login is downloader-only. Re-sign in under Install to install Client + JRE.
+            This saved login is downloader-only. Re-sign in under Accounts to install Client + JRE.
           </p>
         ) : null}
         <DownloadProgressPanel progress={progress} style={{ marginTop: 12 }} />
@@ -309,6 +323,22 @@ export default function ProfilesView({
           channel.
           {loadingVersions ? ' Loading…' : ''}
         </p>
+
+        <div className="field">
+          <span>Icon</span>
+          <InstanceIconPicker
+            instance={active}
+            customSrc={customIconSrc}
+            disabled={busy}
+            onToast={onToast}
+            onChanged={(next, src) => {
+              setCustomIconSrc(src ?? null)
+              void onChanged()
+              void onSelect(next.id)
+            }}
+          />
+        </div>
+
         <label className="field">
           <span>Notes</span>
           <textarea

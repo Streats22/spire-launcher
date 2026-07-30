@@ -1,6 +1,6 @@
-# Spire 0.1.0 — First public release
+# Spire 0.2.0
 
-**Spire** is a cross-platform **Hytale instance launcher** for Windows, macOS, and Linux. Isolated profiles, mods, and worlds — without redistributing the game. You own Hytale through official channels; Spire manages what surrounds it.
+**Spire** is a cross-platform **Hytale instance launcher** for Windows, macOS, and Linux. Isolated profiles, mods, and worlds — without redistributing the game.
 
 > Not affiliated with Hypixel Studios, Riot Games, or Prism Launcher.
 
@@ -8,47 +8,39 @@
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| **Windows** | `Spire-Setup-0.1.0.exe` | Recommended installer (shortcuts, optional startup) |
-| **Windows** | `Spire.0.1.0.exe` | Portable — run from any folder |
-| **macOS** | `Spire-0.1.0.dmg` | Drag Spire into Applications |
-| **Linux** | `Spire-0.1.0.AppImage` | `chmod +x` then run |
-| **Linux** | `Spire-0.1.0.deb` | `sudo dpkg -i …` |
-| **Linux** | `Spire-0.1.0.tar.gz` | Extract and run `Spire` |
+| **Windows** | `Spire-Setup-0.2.0.exe` | Recommended installer (shortcuts, optional startup) |
+| **Windows** | `Spire-0.2.0-portable.exe` | Portable — run from any folder |
+| **macOS** | `Spire-0.2.0-arm64.dmg` (or `.dmg` / `.zip`) | Drag Spire into Applications |
+| **Linux** | `Spire-0.2.0.AppImage` | `chmod +x` then run |
+| **Linux** | `Spire-0.2.0.deb` | `sudo dpkg -i …` |
+| **Linux** | `Spire-0.2.0.tar.gz` | Extract and run `Spire` |
 
 macOS / Linux installers are built by GitHub Actions when this tag is published; they appear on this release as soon as CI finishes.
 
 ## Highlights
 
-### Instances & isolation
-- Create, rename, duplicate, delete, and **group** profiles
-- Per-instance mods, userdata, prefabs, servers, and logs
-- Launch-time isolation checks: `--user-dir` stays under Spire; Mods junction repaired when needed
-- Shared client / JRE via `--app-dir` / `--java-exec` (expected)
+### Appearance
+- More built-in themes (including plain graphite / black / white)
+- **Custom theme**: background, surface, text, and accent via picker, HEX, or RGB
+- Credits chip in the toolbar
 
-### Auth & game install
-- Official **Hytale** OAuth (device flow), multi-account + game profile selection
-- Point at an existing official install, or download / repair clients through Spire
-- Release and pre-release channels; optional pinned build
+### Accounts
+- Toolbar **Accounts** entry and **Sign in** when you’re not signed in
+- Settings → **Accounts** for manage / switch flows
+- Multi-account + game profile switching stays local
 
-### Mods & content
-- **CurseForge**, **Nexus Mods** (`nxm://`), **Thunderstore**, Modtale / Modifold, Modrinth-ready
-- Prefabs, world packs, bootstraps, translations
-- Local file import + download-folder watch / auto-import
-- Rich mod descriptions (Markdown / HTML) and a resizable detail pane
+### Mods
+- Check whether installed store mods are on the latest file
+- **Update** / **Update all** for outdated mods
+- Browse + detail show **Installed** / **Update available**
 
-### Worlds
-- Adventure / Creative / Flat create presets (+ seed)
-- **Apply mod set** to all saves or selected ones
+### Instances
+- Choose a **preset icon** or your own image (PNG / JPG / WebP / GIF)
+- Icons show on home cards and the active-instance toolbar chip
 
-### Share packs
-- Export / import **`.spirepack`** (mods + profile; optional world saves)
-- Always imports as a new instance
-
-### Privacy & polish
-- Local-first: no Spire accounts, no telemetry, optional update JSON check
-- Themes, density, grid/list home layout
-- Clear CurseForge/Nexus keys or wipe all Spire AppData from Settings
-- Branded Windows / macOS installers
+### Updates & docs
+- Clearer update-check UX; Setup builds can use GitHub Releases updater metadata when present
+- Public **roadmap** on the site: https://streats22.github.io/spire-launcher/docs/
 
 ## Requirements
 
@@ -58,21 +50,20 @@ macOS / Linux installers are built by GitHub Actions when this tag is published;
 ## Install tips
 
 - **Windows:** run the Setup exe; SmartScreen may warn on unsigned builds — choose More info → Run anyway if you trust the release.
-- **macOS (important):** Unsigned builds often show **“Spire is damaged and can’t be opened.”** That is Gatekeeper quarantine, not a bad download. After dragging Spire to Applications, run in Terminal:
+- **macOS:** Unsigned builds often show **“Spire is damaged and can’t be opened.”** After dragging to Applications, run:
 
 ```bash
 xattr -cr /Applications/Spire.app
 ```
 
-Then open Spire normally (or right-click → Open the first time).
-- **Linux AppImage:** `chmod +x Spire-0.1.0.AppImage && ./Spire-0.1.0.AppImage`
+- **Linux AppImage:** `chmod +x Spire-0.2.0.AppImage && ./Spire-0.2.0.AppImage`
 
 ## What's next
 
-See the [roadmap](https://github.com/Streats22/spire-launcher#roadmap) in the README. Feedback and issues welcome.
+See the [roadmap](https://streats22.github.io/spire-launcher/docs/) on the project site. Feedback and issues welcome.
 
 ## Links
 
 - Source: https://github.com/Streats22/spire-launcher
 - Site: https://streats22.github.io/spire-launcher/
-- Docs: https://github.com/Streats22/spire-launcher#readme
+- Docs / roadmap: https://streats22.github.io/spire-launcher/docs/
