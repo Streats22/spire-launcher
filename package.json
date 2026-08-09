@@ -138,7 +138,7 @@
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "electron-updater": "^6.8.9",
     "fflate": "^0.8.3",
     "marked": "^18.0.7"
